@@ -123,6 +123,7 @@ def apply_rule(df: pd.DataFrame, rule: dict) -> pd.DataFrame:
     if t == "summarize":
         group_cols = [c for c in rule["group_by"] if c in df.columns]
         agg_map = {}
+        agg_funcs = {}
         for col, func in rule["agg"].items():
             if col not in df.columns:
                 continue
@@ -130,9 +131,19 @@ def apply_rule(df: pd.DataFrame, rule: dict) -> pd.DataFrame:
                 agg_map[col] = lambda s: list(s.dropna().unique())
             else:
                 agg_map[col] = func
+            agg_funcs[col] = func
         if not group_cols or not agg_map:
             return df
-        return df.groupby(group_cols, as_index=False).agg(agg_map)
+        result = df.groupby(group_cols, as_index=False).agg(agg_map)
+        # Rename aggregated columns: "Sum of X", "Mean of X", etc.
+        rename_map = {}
+        for col, func in agg_funcs.items():
+            if col in result.columns and col not in group_cols:
+                func_label = func.capitalize() if isinstance(func, str) else "Agg"
+                rename_map[col] = f"{func_label} of {col}"
+        if rename_map:
+            result = result.rename(columns=rename_map)
+        return result
 
     if t == "custom_filter":
         func = _load_func(rule["module"], rule["func"])
