@@ -50,10 +50,11 @@ def aggregate_etl_by_biweekly(etl: pd.DataFrame) -> pd.DataFrame:
         return "ETL_0622-0628"
 
     df["bucket"] = df["Created at"].apply(_bucket)
+    qty_col = "Sum of Lineitem quantity" if "Sum of Lineitem quantity" in df.columns else "Lineitem quantity"
     pivot = df.pivot_table(
         index="Billing Company",
         columns="bucket",
-        values="Lineitem quantity",
+        values=qty_col,
         aggfunc="sum",
         fill_value=0,
     ).reset_index()
