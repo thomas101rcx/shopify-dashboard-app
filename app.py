@@ -169,27 +169,33 @@ elif page == "Overview":
 
     with tab_overview:
         try:
-            from overview import load_overview_styled, load_account_labels
+            from overview import load_overview_styled, load_label_rules
 
             styled_rows = load_overview_styled(wb)
+            label_rules = load_label_rules(wb)
 
-            # Build DataFrame from styled rows
             cols = ["Account", "Account Label", "Qty_2023", "23-24 Growth", "Qty_2024",
                     "24-25 Growth", "Qty_2025", "25-26 Growth", "Qty_2026_",
                     "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]
-            col_keys = list(range(1, 14))  # 1-indexed column positions
+            # Map col name -> 1-based index in xlsx
+            col_to_xlsx_idx = {
+                "Account": 1, "Account Label": 2, "Qty_2023": 3, "23-24 Growth": 4,
+                "Qty_2024": 5, "24-25 Growth": 6, "Qty_2025": 7, "25-26 Growth": 8,
+                "Qty_2026_": 9, "Qty_2026_1": 10, "Qty_2026_2": 11, "Qty_2026_3": 12, "Qty_2026_4": 13,
+            }
 
             data_rows = []
-            label_styles = {}  # row_idx -> style dict for Account Label col (col 2)
+            # Per-row, per-column style info: {(row_idx, col_name): style_dict}
+            cell_styles = {}
 
             for row_idx, row in enumerate(styled_rows):
                 vals = []
-                for ck in col_keys:
-                    cell = row.get(ck, {})
+                for col_name in cols:
+                    xlsx_idx = col_to_xlsx_idx[col_name]
+                    cell = row.get(xlsx_idx, {})
                     vals.append(cell.get("value"))
-                    # Capture style for Account Label column (col 2)
-                    if ck == 2:
-                        label_styles[row_idx] = {
+                    if cell.get("fill") or cell.get("font_color") or cell.get("label_type"):
+                        cell_styles[(row_idx, col_name)] = {
                             "fill": cell.get("fill"),
                             "font_color": cell.get("font_color"),
                             "label_type": cell.get("label_type"),
@@ -198,89 +204,140 @@ elif page == "Overview":
 
             df = pd.DataFrame(data_rows, columns=cols)
 
-            # Ensure all numeric columns are numeric (None → 0)
+            # Ensure all numeric qty columns are numeric (None → 0)
             for c in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
                 df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
 
             # Compute Qty_2026_ = sum of week columns
             df["Qty_2026_"] = df["Qty_2026_1"] + df["Qty_2026_2"] + df["Qty_2026_3"] + df["Qty_2026_4"]
 
-            # Compute growth columns
+            # Growth: compute only for rows where original xlsx value was numeric
+            # Preserve text labels (New_24, Lost, SOS, etc.) from original xlsx
             def _growth(new, old):
                 if old == 0:
                     return None
                 return (new - old) / old
 
-            df["23-24 Growth"] = df.apply(lambda r: _growth(r["Qty_2024"], r["Qty_2023"]), axis=1)
-            df["24-25 Growth"] = df.apply(lambda r: _growth(r["Qty_2025"], r["Qty_2024"]), axis=1)
-            df["25-26 Growth"] = df.apply(lambda r: _growth(r["Qty_2026_"], r["Qty_2025"]), axis=1)
+            growth_col_defs = [
+                ("23-24 Growth", "Qty_2024", "Qty_2023"),
+                ("24-25 Growth", "Qty_2025", "Qty_2024"),
+                ("25-26 Growth", "Qty_2026_", "Qty_2025"),
+            ]
 
-            def _fmt_growth(v):
+            for gcol, new_col, old_col in growth_col_defs:
+                computed = df.apply(lambda r: _growth(r[new_col], r[old_col]), axis=1)
+                # Keep original text label where it exists, use computed % where original was numeric
+                xlsx_idx = col_to_xlsx_idx[gcol]
+                for i in range(len(df)):
+                    original_styled = styled_rows[i].get(xlsx_idx, {})
+                    original_val = original_styled.get("value")
+                    is_numeric_original = original_styled.get("is_numeric", False)
+                    if isinstance(original_val, str) and original_val.strip():
+                        # Preserve text label from xlsx
+                        df.at[i, gcol] = original_val
+                    elif is_numeric_original:
+                        df.at[i, gcol] = original_val  # Keep original numeric
+                    else:
+                        df.at[i, gcol] = computed.iloc[i]  # Use computed
+
+            growth_col_set = {"23-24 Growth", "24-25 Growth", "25-26 Growth"}
+
+            def _fmt_cell(v, col_name=None):
+                """Format cell: % for growth, int for qty, str for text labels."""
                 if pd.isna(v) or v is None:
                     return ""
+                if isinstance(v, str):
+                    return v  # Text label (New_24, Lost, SOS, etc.)
                 if isinstance(v, (int, float)):
-                    return f"{v:.1%}"
+                    if col_name in growth_col_set and v != 0:
+                        return f"{v:.1%}"
+                    return str(int(v))
                 return str(v)
 
-            for c in ["23-24 Growth", "24-25 Growth", "25-26 Growth"]:
-                df[c] = df[c].apply(_fmt_growth)
+            # Build HTML table with styled cells
+            def _style_cell(val, style, col_name=None):
+                """Render cell value with color badge if styled."""
+                if val is None or (isinstance(val, float) and pd.isna(val)):
+                    val = ""
+                label_type = (style or {}).get("label_type")
+                fill = (style or {}).get("fill")
+                font_color = (style or {}).get("font_color")
 
-            # Build styled Account Label column with HTML badges
-            def _label_badge(text, style):
-                """Render label text with color badge."""
-                if not text:
-                    return ""
-                label_type = style.get("label_type") if style else None
-                fill = style.get("fill") if style else None
-                font_color = style.get("font_color") if style else None
-
-                # Map label types to badge colors
-                badge_colors = {
-                    "new": ("#FFF9C4", "#F57F17", "🟡"),     # yellow bg
-                    "lost": ("#FFCDD2", "#C62828", "🔴"),     # red bg
-                    "reactivated": ("#C8E6C9", "#2E7D32", "🟢"),  # green bg
+                badge_map = {
+                    "new": ("#FFF9C4", "#F57F17", "🟡"),
+                    "lost": ("#FFCDD2", "#C62828", "🔴"),
+                    "reactivated": ("#C8E6C9", "#2E7D32", "🟢"),
                 }
 
-                if label_type in badge_colors:
-                    bg, fg, dot = badge_colors[label_type]
-                    return f'<span style="background:{bg};color:{fg};padding:2px 8px;border-radius:10px;font-size:0.85em;font-weight:600;">{dot} {text}</span>'
+                if label_type in badge_map:
+                    bg, fg, dot = badge_map[label_type]
+                    display = _fmt_cell(val, col_name)
+                    return f'<td style="background:{bg};color:{fg};font-weight:600;padding:4px 8px;text-align:center;">{dot} {display}</td>'
 
-                # Font color only (e.g. SOS in red text, no fill)
-                if font_color and font_color != "#000000":
-                    return f'<span style="color:{font_color};font-weight:600;">{text}</span>'
+                if font_color and font_color not in ("#000000", "FF000000", None):
+                    display = _fmt_cell(val, col_name)
+                    return f'<td style="color:{font_color};font-weight:600;padding:4px 8px;">{display}</td>'
 
-                return str(text)
+                if fill and fill not in ("#FFF2CEEF", None):
+                    display = _fmt_cell(val, col_name)
+                    return f'<td style="background:{fill};padding:4px 8px;">{display}</td>'
 
-            df["Account Label"] = [
-                _label_badge(df["Account Label"].iloc[i], label_styles.get(i))
-                for i in range(len(df))
-            ]
+                display = _fmt_cell(val, col_name)
+                # Right-align numbers, left-align text
+                try:
+                    float(display.replace("%", "").replace(",", ""))
+                    return f'<td style="padding:4px 8px;text-align:right;">{display}</td>'
+                except (ValueError, TypeError):
+                    return f'<td style="padding:4px 8px;">{display}</td>'
+
+            # Build HTML table
+            html = '<table style="border-collapse:collapse;width:100%;font-size:0.9em;">'
+            # Header
+            html += '<tr style="background:#f0f0f0;font-weight:700;">'
+            for col_name in cols:
+                html += f'<th style="padding:6px 8px;border:1px solid #ddd;text-align:left;">{col_name}</th>'
+            html += '</tr>'
+
+            for i in range(len(df)):
+                html += '<tr>'
+                for col_name in cols:
+                    val = df.at[i, col_name]
+                    style = cell_styles.get((i, col_name))
+                    html += _style_cell(val, style, col_name)
+                html += '</tr>'
+            html += '</table>'
 
             st.metric("Total accounts", len(df))
 
-            # Count label types
-            new_count = sum(1 for s in label_styles.values() if s.get("label_type") == "new")
-            lost_count = sum(1 for s in label_styles.values() if s.get("label_type") == "lost")
-            reac_count = sum(1 for s in label_styles.values() if s.get("label_type") == "reactivated")
-            if new_count or lost_count or reac_count:
+            # Count label types across all columns
+            type_counts = {"new": 0, "lost": 0, "reactivated": 0}
+            for style in cell_styles.values():
+                lt = style.get("label_type")
+                if lt in type_counts:
+                    type_counts[lt] += 1
+            if any(type_counts.values()):
                 badges = []
-                if new_count:
-                    badges.append(f"🟡 New: {new_count}")
-                if lost_count:
-                    badges.append(f"🔴 Lost: {lost_count}")
-                if reac_count:
-                    badges.append(f"🟢 Reactivated: {reac_count}")
+                if type_counts["new"]:
+                    badges.append(f"🟡 New: {type_counts['new']}")
+                if type_counts["lost"]:
+                    badges.append(f"🔴 Lost: {type_counts['lost']}")
+                if type_counts["reactivated"]:
+                    badges.append(f"🟢 Reactivated: {type_counts['reactivated']}")
                 st.caption(" · ".join(badges))
 
-            st.write(df.to_html(escape=False, index=False), unsafe_allow_html=True)
+            st.write(html, unsafe_allow_html=True)
 
-            # Label definitions reference
-            try:
-                label_defs = load_account_labels()
-                with st.expander("Label Definitions"):
-                    st.dataframe(label_defs, use_container_width=True, hide_index=True)
-            except Exception:
-                pass
+            # Label rules from Account Label Definition
+            if label_rules:
+                with st.expander("Account Label Definitions"):
+                    rule_data = []
+                    for label_name, rule in label_rules.items():
+                        rule_data.append({
+                            "Label": label_name,
+                            "Definition": rule.get("definition", ""),
+                            "Note": rule.get("note", ""),
+                        })
+                    st.dataframe(pd.DataFrame(rule_data), use_container_width=True, hide_index=True)
 
         except Exception as e:
             st.error(f"Failed to load Overview: {e}")

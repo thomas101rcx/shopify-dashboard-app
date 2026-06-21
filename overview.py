@@ -70,67 +70,113 @@ def _has_colored_label(cell) -> str | None:
 
 
 def load_overview() -> pd.DataFrame:
-    """Load Overview sheet with computed 2026 YTD and growth."""
-    df = _load_raw_sheet("Overview")
-    data = df.iloc[2:].copy()
-    data.columns = range(13)
-    data = data.rename(columns={
-        0: "Account", 1: "Account Label",
-        2: "Qty_2023", 3: "23-24 Growth", 4: "Qty_2024",
-        5: "24-25 Growth", 6: "Qty_2025", 7: "25-26 Growth",
-        8: "Qty_2026_", 9: "Qty_2026_1", 10: "Qty_2026_2",
-        11: "Qty_2026_3", 12: "Qty_2026_4",
-    })
-    data = data.dropna(how="all").reset_index(drop=True)
-    # Stop before subtotal row (row 412 = index 410)
-    data = data[data["Account"].notna()].reset_index(drop=True)
+    """Load Overview sheet with computed 2026 YTD and growth.
 
-    numeric_cols = ["Qty_2023", "Qty_2024", "Qty_2025",
-                    "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]
-    data = _coerce_numeric(data, numeric_cols)
+    Preserves text labels in growth columns (New_24, Lost, SOS, etc.).
+    Only computes % for cells that are originally numeric.
+    """
+    from openpyxl import load_workbook as _lw
+    wb = _lw(PIVOT_PATH)
+    ws = wb["Overview"]
 
-    data["Qty_2026_"] = (
-        data["Qty_2026_1"] + data["Qty_2026_2"] + data["Qty_2026_3"] + data["Qty_2026_4"]
+    cols = ["Account", "Account Label", "Qty_2023", "23-24 Growth", "Qty_2024",
+            "24-25 Growth", "Qty_2025", "25-26 Growth", "Qty_2026_",
+            "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]
+
+    data_rows = []
+    for r in range(3, ws.max_row + 1):
+        row_vals = [ws.cell(row=r, column=c).value for c in range(1, 14)]
+        if all(v is None for v in row_vals):
+            continue
+        # Stop at subtotal/formula rows
+        if isinstance(row_vals[4], str) and row_vals[4].startswith("="):
+            break
+        data_rows.append(row_vals)
+
+    df = pd.DataFrame(data_rows, columns=cols)
+
+    # Ensure qty columns are numeric
+    for c in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
+
+    df["Qty_2026_"] = (
+        df["Qty_2026_1"] + df["Qty_2026_2"] + df["Qty_2026_3"] + df["Qty_2026_4"]
     )
 
-    data["23-24 Growth"] = data.apply(
-        lambda r: _growth(r["Qty_2024"], r["Qty_2023"]) if r["Qty_2023"] > 0 else None, axis=1
-    )
-    data["24-25 Growth"] = data.apply(
-        lambda r: _growth(r["Qty_2025"], r["Qty_2024"]) if r["Qty_2024"] > 0 else None, axis=1
-    )
-    data["25-26 Growth"] = data.apply(
-        lambda r: _growth(r["Qty_2026_"], r["Qty_2025"]) if r["Qty_2025"] > 0 else None, axis=1
-    )
+    # Growth: preserve text labels, compute % only for originally-numeric cells
+    growth_defs = [
+        ("23-24 Growth", "Qty_2024", "Qty_2023"),
+        ("24-25 Growth", "Qty_2025", "Qty_2024"),
+        ("25-26 Growth", "Qty_2026_", "Qty_2025"),
+    ]
+    for gcol, new_col, old_col in growth_defs:
+        computed = df.apply(lambda r: _growth(r[new_col], r[old_col]), axis=1)
+        for i in range(len(df)):
+            original = df.at[i, gcol]
+            if isinstance(original, str) and original.strip():
+                continue  # Keep text label
+            elif isinstance(original, (int, float)):
+                pass  # Keep original numeric
+            else:
+                df.at[i, gcol] = computed.iloc[i]
 
-    return data
+    return df
 
 
 def load_overview_styled(wb) -> list[dict]:
     """Return per-cell style info for the Overview sheet using openpyxl workbook.
 
     Returns list of dicts keyed by column index (1-based):
-      {col_idx: {"value": ..., "fill": "#FFFF00"|None, "font_color": "#FF0000"|None, "label_type": "new"|"lost"|"reactivated"|None}}
+      {col_idx: {"value": ..., "fill": str|None, "font_color": str|None, "label_type": str|None, "is_numeric": bool}}
+
+    Growth columns (4, 6, 8) preserve original text labels (New_24, Lost, SOS, etc.).
+    Only numeric growth values get computed as %.
     """
     ws = wb["Overview"]
     rows = []
     for r in range(3, ws.max_row + 1):
+        # Stop at subtotal/formula rows (col E = 5 has SUM formula)
+        cell_e = ws.cell(row=r, column=5)
+        if isinstance(cell_e.value, str) and cell_e.value.startswith("="):
+            break
         row_data = {}
         for c in range(1, 14):
             cell = ws.cell(row=r, column=c)
             if cell.value is None:
                 continue
+            is_numeric = isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool)
             row_data[c] = {
                 "value": cell.value,
                 "fill": _resolve_fill(cell),
                 "font_color": _resolve_font_color(cell),
                 "label_type": _has_colored_label(cell),
+                "is_numeric": is_numeric,
             }
         if row_data:
             rows.append(row_data)
-    # drop subtotal/formula rows
-    rows = [r for r in rows if not (isinstance(r.get(5, {}).get("value"), str) and r[5]["value"].startswith("="))]
     return rows
+
+
+def load_label_rules(wb) -> dict:
+    """Read Account Label Definition sheet and return label rules.
+
+    Returns dict mapping label name -> {fill, font_color, definition, note}
+    """
+    ws = wb["Account Label Definition "]
+    rules = {}
+    for r in range(3, ws.max_row + 1):
+        label_cell = ws.cell(row=r, column=2)
+        def_cell = ws.cell(row=r, column=3)
+        note_cell = ws.cell(row=r, column=4)
+        if not label_cell.value:
+            continue
+        rules[str(label_cell.value).strip()] = {
+            "fill": _resolve_fill(label_cell),
+            "font_color": _resolve_font_color(label_cell),
+            "definition": def_cell.value,
+            "note": note_cell.value,
+        }
+    return rules
 
 
 def load_lost_accounts() -> pd.DataFrame:
