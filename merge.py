@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from overview import load_overview
+import overview
 
 # Biweekly buckets for June 2026 (ETL period: 0601-0618)
 BIWEEKLY_BUCKETS = [
@@ -78,10 +78,10 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     Returns merged DataFrame with:
       Overview columns + ETL biweekly columns + Variance
     """
-    overview = load_overview()
+    ov = load_overview()
     etl_agg = aggregate_etl_by_biweekly(etl)
 
-    merged = overview.merge(etl_agg, on="Account", how="left")
+    merged = ov.merge(etl_agg, on="Account", how="left")
 
     # Fill NaN ETL columns with 0
     for col in ["ETL_0601-0607", "ETL_0608-0614", "ETL_0615-0621", "ETL_0622-0628", "ETL_Total"]:
@@ -100,13 +100,13 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     Qty_2026_2 = existing Qty_2026_2 + ETL biweekly totals (0601-0618 falls in Q2).
     Qty_2026_ = Qty_2026_1 + Qty_2026_2 + Qty_2026_3 + Qty_2026_4.
     """
-    overview = load_overview()
+    ov = load_overview()
     etl_agg = aggregate_etl_by_biweekly(etl)
 
     # ETL 0601-0618 maps to Q2 (Qty_2026_2)
     etl_for_q2 = etl_agg[["Account", "ETL_Total"]].rename(columns={"ETL_Total": "ETL_Q2"})
 
-    updated = overview.merge(etl_for_q2, on="Account", how="left")
+    updated = ov.merge(etl_for_q2, on="Account", how="left")
     updated["ETL_Q2"] = updated["ETL_Q2"].fillna(0).astype(int)
     updated["Qty_2026_2"] = updated["Qty_2026_2"] + updated["ETL_Q2"]
     updated["Qty_2026_"] = (
@@ -133,7 +133,7 @@ def generate_updated_pivot_xlsx(etl: pd.DataFrame, output_path: str) -> None:
     from openpyxl import load_workbook
     from openpyxl.utils import get_column_letter
 
-    src = "pivot_table.xlsx"
+    src = overview.PIVOT_PATH
     shutil.copy(src, output_path)
 
     wb = load_workbook(output_path)
