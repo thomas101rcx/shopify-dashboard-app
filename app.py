@@ -157,7 +157,7 @@ elif page == "Overview":
 
     try:
         from openpyxl import load_workbook
-        wb = load_workbook(tmp)
+        wb = load_workbook(tmp, data_only=True)
         sheets = wb.sheetnames
     except Exception as e:
         st.error(f"Failed to read file: {e}")

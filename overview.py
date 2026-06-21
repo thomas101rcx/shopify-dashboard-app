@@ -76,7 +76,7 @@ def load_overview() -> pd.DataFrame:
     Only computes % for cells that are originally numeric.
     """
     from openpyxl import load_workbook as _lw
-    wb = _lw(PIVOT_PATH)
+    wb = _lw(PIVOT_PATH, data_only=True)
     ws = wb["Overview"]
 
     cols = ["Account", "Account Label", "Qty_2023", "23-24 Growth", "Qty_2024",
@@ -88,8 +88,8 @@ def load_overview() -> pd.DataFrame:
         row_vals = [ws.cell(row=r, column=c).value for c in range(1, 14)]
         if all(v is None for v in row_vals):
             continue
-        # Stop at subtotal/formula rows
-        if isinstance(row_vals[4], str) and row_vals[4].startswith("="):
+        # Stop at subtotal row: Account (col 1) is None/empty but other cols have values
+        if not row_vals[0]:
             break
         data_rows.append(row_vals)
 
@@ -135,9 +135,8 @@ def load_overview_styled(wb) -> list[dict]:
     ws = wb["Overview"]
     rows = []
     for r in range(3, ws.max_row + 1):
-        # Stop at subtotal/formula rows (col E = 5 has SUM formula)
-        cell_e = ws.cell(row=r, column=5)
-        if isinstance(cell_e.value, str) and cell_e.value.startswith("="):
+        # Stop at subtotal row: Account (col 1) is None/empty
+        if not ws.cell(row=r, column=1).value:
             break
         row_data = {}
         for c in range(1, 14):
