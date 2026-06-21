@@ -10,6 +10,95 @@ from overview import load_overview
 # Quarter -> column mapping
 QUARTER_COL = {1: "Qty_2026_1", 2: "Qty_2026_2", 3: "Qty_2026_3", 4: "Qty_2026_4"}
 
+GROWTH_COLS = ["23-24 Growth", "24-25 Growth", "25-26 Growth"]
+
+
+def _assign_growth_label(new_qty: int, old_qty: int, prior_qty_1: int, prior_qty_2: int,
+                          new_label: str = "New_26") -> str | float | None:
+    """Assign a growth label or compute numeric growth based on qty pattern.
+
+    Rules (derived from original xlsx labeling logic):
+      - New label: old=0, new>0, no prior history → new_label (e.g. "New_24", "New_25", "New_26")
+      - Reactivated: old=0, new>0, has prior history → "Reactivated"
+      - Lost: old=0, new=0, has prior history → "Lost"
+      - "/": old=0, new=0, no prior history → "/"
+      - Numeric: old>0 → (new - old) / old
+
+    For 23-24 Growth: prior_qty_1 and prior_qty_2 are unused (no earlier years).
+    For 24-25 Growth: prior_qty_1 = Qty_2023, prior_qty_2 unused.
+    For 25-26 Growth: prior_qty_1 = Qty_2024, prior_qty_2 = Qty_2023.
+    """
+    has_prior = (prior_qty_1 > 0) or (prior_qty_2 > 0)
+
+    if old_qty == 0 and new_qty > 0:
+        if has_prior:
+            return "Reactivated"
+        return new_label
+
+    if old_qty == 0 and new_qty == 0:
+        if has_prior:
+            return "Lost"
+        return "/"
+
+    if old_qty > 0:
+        return (new_qty - old_qty) / old_qty
+
+    return None
+
+
+def _restore_original_growth(merged: pd.DataFrame, original: pd.DataFrame) -> pd.DataFrame:
+    """Restore original growth labels for existing accounts after merge.
+
+    For accounts that existed in the Overview, preserve their original text labels
+    (New_24, New_25, New_26, Lost, SOS, Reactivated, /) and only recompute
+    25-26 Growth when ETL changed Qty_2026_ from 0 to >0.
+    """
+    # Build lookup of original growth labels by account (use first if duplicates)
+    orig_labels = original.drop_duplicates(subset="Account", keep="first").set_index("Account")[GROWTH_COLS].to_dict("index")
+
+    for i, row in merged.iterrows():
+        acct = row["Account"]
+        if acct not in orig_labels:
+            # New ETL-only account — assign labels from scratch
+            _assign_all_growth_for_new_account(merged, i, row)
+            continue
+
+        orig = orig_labels[acct]
+
+        # 23-24 and 24-25 Growth: always preserve (ETL doesn't affect past years)
+        merged.at[i, "23-24 Growth"] = orig["23-24 Growth"]
+        merged.at[i, "24-25 Growth"] = orig["24-25 Growth"]
+
+        # 25-26 Growth: preserve unless ETL changed Qty_2026_ from 0 to >0
+        orig_25_26 = orig["25-26 Growth"]
+        orig_q26 = row.get("_orig_Qty_2026_", row["Qty_2026_"])  # original Q26 before merge
+        new_q26 = row["Qty_2026_"]
+
+        if orig_q26 == 0 and new_q26 > 0:
+            # ETL added purchases where there were none — recompute label
+            has_prior = (row["Qty_2023"] > 0) or (row["Qty_2024"] > 0) or (row["Qty_2025"] > 0)
+            if has_prior:
+                merged.at[i, "25-26 Growth"] = "Reactivated"
+            else:
+                merged.at[i, "25-26 Growth"] = "New_26"
+        else:
+            # Preserve original label (Lost, SOS, numeric, etc.)
+            merged.at[i, "25-26 Growth"] = orig_25_26
+
+    return merged
+
+
+def _assign_all_growth_for_new_account(merged: pd.DataFrame, i, row) -> None:
+    """Assign growth labels for a new ETL-only account (not in original Overview)."""
+    q23, q24, q25, q26 = int(row["Qty_2023"]), int(row["Qty_2024"]), int(row["Qty_2025"]), int(row["Qty_2026_"])
+
+    # 23-24 Growth
+    merged.at[i, "23-24 Growth"] = _assign_growth_label(q24, q23, 0, 0, new_label="New_24")
+    # 24-25 Growth
+    merged.at[i, "24-25 Growth"] = _assign_growth_label(q25, q24, q23, 0, new_label="New_25")
+    # 25-26 Growth
+    merged.at[i, "25-26 Growth"] = _assign_growth_label(q26, q25, q24, q23, new_label="New_26")
+
 
 def _month_to_quarter(month: int) -> int:
     """Map month (1-12) to quarter (1-4)."""
@@ -61,10 +150,14 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
       Overview columns + ETL_Q1..ETL_Q4 + ETL_Total
 
     New accounts in ETL (not in Overview) are appended as rows with
-    Overview columns filled with 0/empty.
+    Overview columns filled with 0/empty. Original growth labels are preserved.
     """
     ov = load_overview()
     etl_agg = aggregate_etl_by_quarter(etl)
+
+    # Store original Qty_2026_ before merge for label logic
+    ov = ov.copy()
+    ov["_orig_Qty_2026_"] = ov["Qty_2026_"]
 
     merged = ov.merge(etl_agg, on="Account", how="outer")
 
@@ -84,20 +177,24 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
         if col in merged.columns:
             merged[col] = merged[col].fillna("")
 
-    # Recompute growth for rows that need it
-    def _growth(new, old):
-        if old == 0:
-            return None
-        return (new - old) / old
+    merged["_orig_Qty_2026_"] = merged["_orig_Qty_2026_"].fillna(0).astype(int)
 
-    for col, new_col, old_col in [
-        ("23-24 Growth", "Qty_2024", "Qty_2023"),
-        ("24-25 Growth", "Qty_2025", "Qty_2024"),
-        ("25-26 Growth", "Qty_2026_", "Qty_2025"),
-    ]:
-        merged[col] = merged.apply(
-            lambda r: _growth(r[new_col], r[old_col]) if r[old_col] > 0 else None, axis=1
-        )
+    # Add ETL qty to correct quarter columns
+    for q_num in range(1, 5):
+        etl_q = f"ETL_Q{q_num}"
+        pivot_q = f"Qty_2026_{q_num}"
+        merged[pivot_q] = merged[pivot_q] + merged[etl_q]
+
+    merged["Qty_2026_"] = (
+        merged["Qty_2026_1"] + merged["Qty_2026_2"]
+        + merged["Qty_2026_3"] + merged["Qty_2026_4"]
+    )
+
+    # Restore growth labels (preserve original, recompute only when needed)
+    merged = _restore_original_growth(merged, ov)
+
+    # Drop helper columns
+    merged = merged.drop(columns=["_orig_Qty_2026_"], errors="ignore")
 
     return merged
 
@@ -110,10 +207,14 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     Qty_2026_ = Qty_2026_1 + Qty_2026_2 + Qty_2026_3 + Qty_2026_4 (recomputed).
 
     New accounts in ETL (not in Overview) are appended with ETL qty in the
-    correct quarter column.
+    correct quarter column. Original growth labels are preserved.
     """
     ov = load_overview()
     etl_agg = aggregate_etl_by_quarter(etl)
+
+    # Store original Qty_2026_ before merge for label logic
+    ov = ov.copy()
+    ov["_orig_Qty_2026_"] = ov["Qty_2026_"]
 
     updated = ov.merge(etl_agg, on="Account", how="outer")
 
@@ -132,8 +233,9 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
         if col in updated.columns:
             updated[col] = updated[col].fillna("")
 
+    updated["_orig_Qty_2026_"] = updated["_orig_Qty_2026_"].fillna(0).astype(int)
+
     # Add ETL qty to the correct quarter column
-    # ETL_Q1 -> Qty_2026_1, ETL_Q2 -> Qty_2026_2, etc.
     for q_num in range(1, 5):
         etl_q = f"ETL_Q{q_num}"
         pivot_q = f"Qty_2026_{q_num}"
@@ -148,21 +250,11 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     # Drop helper ETL columns
     updated = updated.drop(columns=["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"], errors="ignore")
 
-    # Recompute growth for all rows
-    def _growth(new, old):
-        if old == 0:
-            return None
-        return (new - old) / old
+    # Restore growth labels (preserve original, recompute only when needed)
+    updated = _restore_original_growth(updated, ov)
 
-    updated["23-24 Growth"] = updated.apply(
-        lambda r: _growth(r["Qty_2024"], r["Qty_2023"]) if r["Qty_2023"] > 0 else None, axis=1
-    )
-    updated["24-25 Growth"] = updated.apply(
-        lambda r: _growth(r["Qty_2025"], r["Qty_2024"]) if r["Qty_2024"] > 0 else None, axis=1
-    )
-    updated["25-26 Growth"] = updated.apply(
-        lambda r: _growth(r["Qty_2026_"], r["Qty_2025"]) if r["Qty_2025"] > 0 else None, axis=1
-    )
+    # Drop helper columns
+    updated = updated.drop(columns=["_orig_Qty_2026_"], errors="ignore")
 
     return updated
 
