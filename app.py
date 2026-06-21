@@ -352,7 +352,15 @@ elif page == "Merge":
             st.error(f"Failed to read file: {e}")
             st.stop()
 
-    required = {"Billing Company", "Lineitem quantity", "Created at"}
+    # ETL output may have renamed columns (e.g. "Sum of Lineitem quantity")
+    if "Sum of Lineitem quantity" in etl.columns:
+        qty_col = "Sum of Lineitem quantity"
+    elif "Lineitem quantity" in etl.columns:
+        qty_col = "Lineitem quantity"
+    else:
+        st.error("Missing column: Lineitem quantity")
+        st.stop()
+    required = {"Billing Company", qty_col, "Created at"}
     missing = required - set(etl.columns)
     if missing:
         st.error(f"Missing columns: {missing}")
