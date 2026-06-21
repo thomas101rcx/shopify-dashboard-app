@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 import overview
+from overview import load_overview
 
 # Biweekly buckets for June 2026 (ETL period: 0601-0618)
 BIWEEKLY_BUCKETS = [
