@@ -169,20 +169,33 @@ elif page == "Overview":
 
     with tab_overview:
         try:
-            ws = wb["Overview"]
-            rows = []
-            for r in range(3, ws.max_row + 1):
-                row_vals = [ws.cell(row=r, column=c).value for c in range(1, 14)]
-                if all(v is None for v in row_vals):
-                    continue
-                rows.append(row_vals)
-            # Data rows = those without SUM formula in col E
-            data_rows = [r for r in rows if not (isinstance(r[4], str) and r[4].startswith("="))]
-            subtotal_rows = [r for r in rows if isinstance(r[4], str) and r[4].startswith("=")]
+            from overview import load_overview_styled, load_account_labels
 
+            styled_rows = load_overview_styled(wb)
+
+            # Build DataFrame from styled rows
             cols = ["Account", "Account Label", "Qty_2023", "23-24 Growth", "Qty_2024",
                     "24-25 Growth", "Qty_2025", "25-26 Growth", "Qty_2026_",
                     "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]
+            col_keys = list(range(1, 14))  # 1-indexed column positions
+
+            data_rows = []
+            label_styles = {}  # row_idx -> style dict for Account Label col (col 2)
+
+            for row_idx, row in enumerate(styled_rows):
+                vals = []
+                for ck in col_keys:
+                    cell = row.get(ck, {})
+                    vals.append(cell.get("value"))
+                    # Capture style for Account Label column (col 2)
+                    if ck == 2:
+                        label_styles[row_idx] = {
+                            "fill": cell.get("fill"),
+                            "font_color": cell.get("font_color"),
+                            "label_type": cell.get("label_type"),
+                        }
+                data_rows.append(vals)
+
             df = pd.DataFrame(data_rows, columns=cols)
 
             # Ensure all numeric columns are numeric (None → 0)
@@ -212,11 +225,63 @@ elif page == "Overview":
             for c in ["23-24 Growth", "24-25 Growth", "25-26 Growth"]:
                 df[c] = df[c].apply(_fmt_growth)
 
-            st.metric("Total accounts", len(df))
-            st.dataframe(df, use_container_width=True, height=600)
+            # Build styled Account Label column with HTML badges
+            def _label_badge(text, style):
+                """Render label text with color badge."""
+                if not text:
+                    return ""
+                label_type = style.get("label_type") if style else None
+                fill = style.get("fill") if style else None
+                font_color = style.get("font_color") if style else None
 
-            if subtotal_rows:
-                st.caption(f"Subtotal row present ({len(subtotal_rows)} formula rows)")
+                # Map label types to badge colors
+                badge_colors = {
+                    "new": ("#FFF9C4", "#F57F17", "🟡"),     # yellow bg
+                    "lost": ("#FFCDD2", "#C62828", "🔴"),     # red bg
+                    "reactivated": ("#C8E6C9", "#2E7D32", "🟢"),  # green bg
+                }
+
+                if label_type in badge_colors:
+                    bg, fg, dot = badge_colors[label_type]
+                    return f'<span style="background:{bg};color:{fg};padding:2px 8px;border-radius:10px;font-size:0.85em;font-weight:600;">{dot} {text}</span>'
+
+                # Font color only (e.g. SOS in red text, no fill)
+                if font_color and font_color != "#000000":
+                    return f'<span style="color:{font_color};font-weight:600;">{text}</span>'
+
+                return str(text)
+
+            df["Account Label"] = [
+                _label_badge(df["Account Label"].iloc[i], label_styles.get(i))
+                for i in range(len(df))
+            ]
+
+            st.metric("Total accounts", len(df))
+
+            # Count label types
+            new_count = sum(1 for s in label_styles.values() if s.get("label_type") == "new")
+            lost_count = sum(1 for s in label_styles.values() if s.get("label_type") == "lost")
+            reac_count = sum(1 for s in label_styles.values() if s.get("label_type") == "reactivated")
+            if new_count or lost_count or reac_count:
+                badges = []
+                if new_count:
+                    badges.append(f"🟡 New: {new_count}")
+                if lost_count:
+                    badges.append(f"🔴 Lost: {lost_count}")
+                if reac_count:
+                    badges.append(f"🟢 Reactivated: {reac_count}")
+                st.caption(" · ".join(badges))
+
+            st.write(df.to_html(escape=False, index=False), unsafe_allow_html=True)
+
+            # Label definitions reference
+            try:
+                label_defs = load_account_labels()
+                with st.expander("Label Definitions"):
+                    st.dataframe(label_defs, use_container_width=True, hide_index=True)
+            except Exception:
+                pass
+
         except Exception as e:
             st.error(f"Failed to load Overview: {e}")
 

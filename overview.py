@@ -106,27 +106,30 @@ def load_overview() -> pd.DataFrame:
     return data
 
 
-def load_overview_styled() -> list[dict]:
-    """Return per-cell style info for the Overview sheet."""
-    df = _load_raw_sheet("Overview")
+def load_overview_styled(wb) -> list[dict]:
+    """Return per-cell style info for the Overview sheet using openpyxl workbook.
+
+    Returns list of dicts keyed by column index (1-based):
+      {col_idx: {"value": ..., "fill": "#FFFF00"|None, "font_color": "#FF0000"|None, "label_type": "new"|"lost"|"reactivated"|None}}
+    """
+    ws = wb["Overview"]
     rows = []
-    for r_idx in range(3, len(df) + 1):
+    for r in range(3, ws.max_row + 1):
         row_data = {}
-        for c_idx in range(1, 18):
-            cell = df.cell(row=r_idx, column=c_idx)
+        for c in range(1, 14):
+            cell = ws.cell(row=r, column=c)
             if cell.value is None:
                 continue
-            row_data[c_idx] = {
+            row_data[c] = {
                 "value": cell.value,
-                "bold": cell.font.bold if cell.font else False,
                 "fill": _resolve_fill(cell),
                 "font_color": _resolve_font_color(cell),
                 "label_type": _has_colored_label(cell),
             }
         if row_data:
             rows.append(row_data)
-    # drop subtotal row
-    rows = [r for r in rows if not (isinstance(r.get(9, {}).get("value"), str) and r[9]["value"].startswith("="))]
+    # drop subtotal/formula rows
+    rows = [r for r in rows if not (isinstance(r.get(5, {}).get("value"), str) and r[5]["value"].startswith("="))]
     return rows
 
 

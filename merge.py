@@ -78,7 +78,7 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     """Merge Overview with ETL biweekly data.
 
     Returns merged DataFrame with:
-      Overview columns + ETL biweekly columns + Variance
+      Overview columns + ETL biweekly columns
 
     New accounts in ETL (not in Overview) are appended as rows with
     Overview columns filled with 0/empty.
@@ -118,9 +118,6 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
         merged[col] = merged.apply(
             lambda r: _growth(r[new_col], r[old_col]) if r[old_col] > 0 else None, axis=1
         )
-
-    # Variance: ETL_Total - Qty_2026_ (existing)
-    merged["Variance"] = merged["ETL_Total"] - merged["Qty_2026_"]
 
     return merged
 
