@@ -425,7 +425,8 @@ elif page == "Merge":
     st.subheader("Merge ETL → Overview")
     st.markdown(
         "Upload your current `pivot_table.xlsx` + ETL output (CSV/XLSX) to merge. "
-        "ETL biweekly quantities (0601-0618) will be added to Qty_2026_2 and Qty_2026_."
+        "ETL quantities are added to the correct quarter column based on order date "
+        "(Jan-Mar → Q1, Apr-Jun → Q2, Jul-Sep → Q3, Oct-Dec → Q4)."
     )
 
     pivot_file = st.file_uploader(
@@ -440,11 +441,10 @@ elif page == "Merge":
     pivot_tmp = Path(f"/tmp/merge_pivot_{pivot_file.file_id}{suffix}")
     pivot_tmp.write_bytes(pivot_file.getvalue())
 
-    # Point overview + merge modules at uploaded file
+    # Point overview module at uploaded file (merge uses overview.PIVOT_PATH)
     import overview as overview_mod
     import merge as merge_mod
     overview_mod.PIVOT_PATH = str(pivot_tmp)
-    merge_mod.PIVOT_PATH = str(pivot_tmp)
 
     if "etl_result" in st.session_state:
         st.info("Using ETL result from current session (sent from ETL tab).")
@@ -501,7 +501,10 @@ elif page == "Merge":
     with tab1:
         merged = merge_overview_with_etl(etl)
         new_count = merged["Qty_2023"].eq(0) & merged["Qty_2024"].eq(0) & merged["Qty_2025"].eq(0) & merged["ETL_Total"].gt(0)
-        st.caption(f"Rows: {len(merged)} ({new_count.sum()} new)")
+        # Build dynamic ETL column list for display
+        etl_cols = [c for c in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"] if c in merged.columns]
+        overview_cols = [c for c in merged.columns if c not in etl_cols]
+        st.caption(f"Rows: {len(merged)} ({new_count.sum()} new) — ETL columns: {', '.join(etl_cols)}")
         st.dataframe(merged, use_container_width=True, height=600)
 
         csv_bytes = merged.to_csv(index=False).encode()
@@ -512,7 +515,7 @@ elif page == "Merge":
     with tab2:
         updated = updated_overview_with_etl(etl)
         new_count = updated["Qty_2023"].eq(0) & updated["Qty_2024"].eq(0) & updated["Qty_2025"].eq(0) & updated["Qty_2026_"].gt(0)
-        st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — Qty_2026_2 and Qty_2026_ updated with ETL data")
+        st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — ETL qty added to correct quarter, Qty_2026_ recomputed")
         st.dataframe(updated, use_container_width=True, height=600)
 
         csv_bytes = updated.to_csv(index=False).encode()

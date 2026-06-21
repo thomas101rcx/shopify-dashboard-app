@@ -7,89 +7,69 @@ import pandas as pd
 import overview
 from overview import load_overview
 
-# Biweekly buckets for June 2026 (ETL period: 0601-0618)
-BIWEEKLY_BUCKETS = [
-    ("Qty_2026_1", "0601-0607", "2026-06-01", "2026-06-07"),
-    ("Qty_2026_2", "0608-0614", "2026-06-08", "2026-06-14"),
-    ("Qty_2026_3", "0615-0621", "2026-06-15", "2026-06-21"),
-    ("Qty_2026_4", "0622-0628", "2026-06-22", "2026-06-28"),
-]
+# Quarter -> column mapping
+QUARTER_COL = {1: "Qty_2026_1", 2: "Qty_2026_2", 3: "Qty_2026_3", 4: "Qty_2026_4"}
 
 
-def _empty_weekly_df(accounts: list[str]) -> pd.DataFrame:
-    return pd.DataFrame({
-        "Account": accounts,
-        "ETL_0601-0607": 0,
-        "ETL_0608-0614": 0,
-        "ETL_0615-0621": 0,
-        "ETL_0622-0628": 0,
-        "ETL_Total": 0,
-    })
+def _month_to_quarter(month: int) -> int:
+    """Map month (1-12) to quarter (1-4)."""
+    return (month - 1) // 3 + 1
 
 
-def aggregate_etl_by_biweekly(etl: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate ETL result by Billing Company + biweekly bucket.
+def _quarter_col(month: int) -> str:
+    """Return the Qty_2026_N column name for a given month."""
+    return QUARTER_COL[_month_to_quarter(month)]
+
+
+def aggregate_etl_by_quarter(etl: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate ETL result by Billing Company + quarter.
 
     Returns DataFrame with columns:
-      Account, ETL_0601-0607, ETL_0608-0614, ETL_0615-0621, ETL_0622-0628, ETL_Total
+      Account, ETL_Q1, ETL_Q2, ETL_Q3, ETL_Q4, ETL_Total
+    Only quarters present in the ETL data will have non-zero values.
     """
     if etl.empty:
-        return _empty_weekly_df([])
+        return pd.DataFrame(columns=["Account", "ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"])
 
     df = etl.copy()
     df["Created at"] = pd.to_datetime(df["Created at"])
+    df["quarter"] = df["Created at"].dt.month.apply(lambda m: f"ETL_Q{_month_to_quarter(m)}")
 
-    def _bucket(dt):
-        day = dt.day
-        if day <= 7:
-            return "ETL_0601-0607"
-        if day <= 14:
-            return "ETL_0608-0614"
-        if day <= 21:
-            return "ETL_0615-0621"
-        return "ETL_0622-0628"
-
-    df["bucket"] = df["Created at"].apply(_bucket)
     qty_col = "Sum of Lineitem quantity" if "Sum of Lineitem quantity" in df.columns else "Lineitem quantity"
     pivot = df.pivot_table(
         index="Billing Company",
-        columns="bucket",
+        columns="quarter",
         values=qty_col,
         aggfunc="sum",
         fill_value=0,
     ).reset_index()
 
-    # Ensure all bucket columns exist
-    for col in ["ETL_0601-0607", "ETL_0608-0614", "ETL_0615-0621", "ETL_0622-0628"]:
-        if col not in pivot.columns:
-            pivot[col] = 0
+    # Ensure all quarter columns exist
+    for q in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4"]:
+        if q not in pivot.columns:
+            pivot[q] = 0
 
-    pivot["ETL_Total"] = (
-        pivot["ETL_0601-0607"] + pivot["ETL_0608-0614"]
-        + pivot["ETL_0615-0621"] + pivot["ETL_0622-0628"]
-    )
+    pivot["ETL_Total"] = pivot["ETL_Q1"] + pivot["ETL_Q2"] + pivot["ETL_Q3"] + pivot["ETL_Q4"]
     pivot = pivot.rename(columns={"Billing Company": "Account"})
-    return pivot[
-        ["Account", "ETL_0601-0607", "ETL_0608-0614", "ETL_0615-0621", "ETL_0622-0628", "ETL_Total"]
-    ]
+    return pivot[["Account", "ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"]]
 
 
 def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
-    """Merge Overview with ETL biweekly data.
+    """Merge Overview with ETL quarterly data.
 
     Returns merged DataFrame with:
-      Overview columns + ETL biweekly columns
+      Overview columns + ETL_Q1..ETL_Q4 + ETL_Total
 
     New accounts in ETL (not in Overview) are appended as rows with
     Overview columns filled with 0/empty.
     """
     ov = load_overview()
-    etl_agg = aggregate_etl_by_biweekly(etl)
+    etl_agg = aggregate_etl_by_quarter(etl)
 
     merged = ov.merge(etl_agg, on="Account", how="outer")
 
     # Fill NaN ETL columns with 0
-    for col in ["ETL_0601-0607", "ETL_0608-0614", "ETL_0615-0621", "ETL_0622-0628", "ETL_Total"]:
+    for col in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"]:
         if col in merged.columns:
             merged[col] = merged[col].fillna(0).astype(int)
 
@@ -123,21 +103,23 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
 
 
 def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
-    """Return Overview with ETL data added to Qty_2026_2 and Qty_2026_.
+    """Return Overview with ETL data added to the correct quarter column.
 
-    Qty_2026_2 = existing Qty_2026_2 + ETL biweekly totals (0601-0618 falls in Q2).
-    Qty_2026_ = Qty_2026_1 + Qty_2026_2 + Qty_2026_3 + Qty_2026_4.
+    ETL orders are grouped by quarter (Jan-Mar -> Qty_2026_1, Apr-Jun -> Qty_2026_2,
+    Jul-Sep -> Qty_2026_3, Oct-Dec -> Qty_2026_4).
+    Qty_2026_ = Qty_2026_1 + Qty_2026_2 + Qty_2026_3 + Qty_2026_4 (recomputed).
 
-    New accounts in ETL (not in Overview) are appended with ETL qty as Qty_2026_2.
+    New accounts in ETL (not in Overview) are appended with ETL qty in the
+    correct quarter column.
     """
     ov = load_overview()
-    etl_agg = aggregate_etl_by_biweekly(etl)
+    etl_agg = aggregate_etl_by_quarter(etl)
 
-    # ETL 0601-0618 maps to Q2 (Qty_2026_2)
-    etl_for_q2 = etl_agg[["Account", "ETL_Total"]].rename(columns={"ETL_Total": "ETL_Q2"})
+    updated = ov.merge(etl_agg, on="Account", how="outer")
 
-    updated = ov.merge(etl_for_q2, on="Account", how="outer")
-    updated["ETL_Q2"] = updated["ETL_Q2"].fillna(0).astype(int)
+    # Fill NaN ETL quarter columns with 0
+    for q in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4"]:
+        updated[q] = updated[q].fillna(0).astype(int)
 
     # Fill NaN Overview numeric columns with 0 (new ETL-only accounts)
     for col in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_",
@@ -150,12 +132,21 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
         if col in updated.columns:
             updated[col] = updated[col].fillna("")
 
-    updated["Qty_2026_2"] = updated["Qty_2026_2"] + updated["ETL_Q2"]
+    # Add ETL qty to the correct quarter column
+    # ETL_Q1 -> Qty_2026_1, ETL_Q2 -> Qty_2026_2, etc.
+    for q_num in range(1, 5):
+        etl_q = f"ETL_Q{q_num}"
+        pivot_q = f"Qty_2026_{q_num}"
+        updated[pivot_q] = updated[pivot_q] + updated[etl_q]
+
+    # Recompute Qty_2026_ = sum of all quarter columns
     updated["Qty_2026_"] = (
         updated["Qty_2026_1"] + updated["Qty_2026_2"]
         + updated["Qty_2026_3"] + updated["Qty_2026_4"]
     )
-    updated = updated.drop(columns=["ETL_Q2"])
+
+    # Drop helper ETL columns
+    updated = updated.drop(columns=["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"], errors="ignore")
 
     # Recompute growth for all rows
     def _growth(new, old):
@@ -186,10 +177,8 @@ def generate_updated_pivot_xlsx(etl: pd.DataFrame, output_path: str) -> None:
       - Subtotal row: SUM / COUNTIF formulas
     """
     import shutil
-    from copy import copy
     from datetime import date
     from openpyxl import load_workbook
-    from openpyxl.utils import get_column_letter
 
     src = overview.PIVOT_PATH
     shutil.copy(src, output_path)
