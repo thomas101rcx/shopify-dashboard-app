@@ -1,0 +1,30 @@
+rules:
+  - type: keep_cols
+    cols: [Email, Lineitem quantity, Lineitem name, Lineitem price, Lineitem sku, Billing Company, Created at]
+
+  - type: custom_filter
+    module: filters.py
+    func: filter_valid_purchases
+
+  - type: fill_from_lookup
+    src_col: Email
+    dst_col: Billing Company
+
+  - type: fill_domain
+    src_col: Email
+    dst_col: Billing Company
+    free_domains: [gmail.com, yahoo.com, comcast.net, outlook.com, hotmail.com, aol.com, icloud.com, mail.com, protonmail.com, zoho.com]
+    use_full_email_for_free: true
+
+  - type: astype
+    mapping:
+      Lineitem quantity: int
+      Lineitem price: float
+      Created at: datetime
+
+  - type: summarize
+    group_by: [Billing Company, Created at]
+    agg:
+      Lineitem quantity: sum
+      Lineitem price: sum
+      Lineitem sku: list

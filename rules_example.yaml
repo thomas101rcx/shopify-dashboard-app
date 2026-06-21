@@ -1,0 +1,40 @@
+# Example rules file. Copy, edit, upload via sidebar.
+# Types: keep_cols, drop_cols, filter, rename, astype, drop_na, fill_na, dedup, sort, summarize
+
+rules:
+  - type: keep_cols
+    cols: [order_id, customer, total, date, status]
+
+  - type: filter
+    col: status
+    op: in
+    value: [completed, paid]
+
+  - type: filter
+    col: total
+    op: gte
+    value: "100"
+    dtype: float
+
+  - type: rename
+    mapping:
+      order_id: order
+      customer: customer_name
+
+  - type: astype
+    mapping:
+      date: datetime
+      total: float
+
+  - type: drop_na
+    cols: [order, total]
+
+  - type: sort
+    col: total
+    asc: false
+
+  # - type: summarize
+  #   group_by: [status]
+  #   agg:
+  #     total: sum
+  #     order: count
