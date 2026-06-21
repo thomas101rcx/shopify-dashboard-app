@@ -167,6 +167,59 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     return updated
 
 
+def compute_count(updated: pd.DataFrame) -> dict:
+    """Compute Count tab row values from an updated Overview DataFrame.
+
+    Returns dict:
+      {"Total Account": int, "Lost": int, "New_26": int,
+       "No Purchase 2026 / Not Lost": int, "Already Purchased 2026": int}
+    """
+    total = len(df := updated)
+    lost = int((df["25-26 Growth"] == "Lost").sum())
+    new_26 = int((df["25-26 Growth"] == "New_26").sum())
+    no_purchase = int(((df["Qty_2026_"] == 0) & (df["25-26 Growth"] != "Lost")).sum())
+    already = int((df["Qty_2026_"] > 0).sum())
+    return {
+        "Total Account": total,
+        "Lost": lost,
+        "New_26": new_26,
+        "No Purchase 2026 / Not Lost": no_purchase,
+        "Already Purchased 2026": already,
+    }
+
+
+def etl_date_label(etl: pd.DataFrame) -> str:
+    """Derive a date range label from ETL's Created at column.
+
+    Returns string like '0601-0618' from min/max dates.
+    """
+    dates = pd.to_datetime(etl["Created at"])
+    lo = dates.min()
+    hi = dates.max()
+    return f"{lo.strftime('%m%d')}-{hi.strftime('%m%d')}"
+
+
+def add_count_column(wb, label: str, updated: pd.DataFrame) -> None:
+    """Append a new column to the Count sheet with updated counts.
+
+    wb: openpyxl workbook (already loaded)
+    label: date range string for the column header (e.g. '0601-0618')
+    updated: post-merge Overview DataFrame
+    """
+    ws = wb["Count"]
+    new_col = ws.max_column + 1
+
+    # Header
+    ws.cell(row=1, column=new_col, value=label)
+
+    # Data rows
+    counts = compute_count(updated)
+    row_labels = ["Total Account", "Lost", "New_26",
+                  "No Purchase 2026 / Not Lost", "Already Purchased 2026"]
+    for i, lbl in enumerate(row_labels, start=2):
+        ws.cell(row=i, column=new_col, value=counts[lbl])
+
+
 def generate_updated_pivot_xlsx(etl: pd.DataFrame, output_path: str) -> None:
     """Generate a full pivot_table.xlsx with Overview sheet updated from ETL data.
 
@@ -253,5 +306,8 @@ def generate_updated_pivot_xlsx(etl: pd.DataFrame, output_path: str) -> None:
     # Count rows
     ws.cell(row=sub_row + 1, column=9, value=f"=COUNTIF(I3:I{last_data_row},0)")
     ws.cell(row=sub_row + 2, column=9, value=f"=COUNTIF(I3:I{last_data_row}, \"<>0\")")
+
+    # Append new column to Count tab
+    add_count_column(wb, etl_date_label(etl), updated)
 
     wb.save(output_path)

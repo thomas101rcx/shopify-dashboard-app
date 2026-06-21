@@ -496,7 +496,9 @@ elif page == "Merge":
     if new_accounts:
         st.warning(f"**{len(new_accounts)} new account(s)** in ETL not in Overview: {', '.join(sorted(new_accounts)[:10])}{'...' if len(new_accounts) > 10 else ''}")
 
-    tab1, tab2 = st.tabs(["Side-by-side Merge", "Updated Overview"])
+    from merge import compute_count, etl_date_label
+
+    tab1, tab2, tab3 = st.tabs(["Side-by-side Merge", "Updated Overview", "Updated Count"])
 
     with tab1:
         merged = merge_overview_with_etl(etl)
@@ -541,3 +543,44 @@ elif page == "Merge":
                 st.success("Generated — click download above")
             except Exception as e:
                 st.error(f"Failed to generate: {e}")
+
+    with tab3:
+        updated = updated_overview_with_etl(etl)
+        counts = compute_count(updated)
+        label = etl_date_label(etl)
+
+        st.caption(f"New column **{label}** appended to Count tab — categories computed from updated Overview")
+
+        # Show as a simple table
+        count_df = pd.DataFrame([
+            {"Category": k, "Count": v}
+            for k, v in counts.items()
+        ])
+        st.dataframe(count_df, use_container_width=True, hide_index=True)
+
+        # Show delta vs last Count column if available
+        try:
+            from openpyxl import load_workbook as _lw
+            wb_counts = _lw(pivot_tmp, data_only=True)
+            ws_count = wb_counts["Count"]
+            if ws_count.max_column >= 2:
+                prev_col = ws_count.max_column  # last existing column (before our append)
+                prev_label = ws_count.cell(row=1, column=prev_col).value
+                prev_counts = {
+                    ws_count.cell(row=r, column=1).value: ws_count.cell(row=r, column=prev_col).value
+                    for r in range(2, 7)
+                }
+                delta_rows = []
+                for cat, new_val in counts.items():
+                    old_val = prev_counts.get(cat, 0) or 0
+                    delta = new_val - old_val
+                    delta_rows.append({
+                        "Category": cat,
+                        f"Before ({prev_label})": old_val,
+                        f"After ({label})": new_val,
+                        "Δ": delta,
+                    })
+                st.caption(f"Delta vs previous column ({prev_label})")
+                st.dataframe(pd.DataFrame(delta_rows), use_container_width=True, hide_index=True)
+        except Exception:
+            pass
