@@ -33,6 +33,7 @@ def apply_rule(df: pd.DataFrame, rule: dict) -> pd.DataFrame:
       - fill_na: {col: value} — fill NA
       - dedup: list[str] — drop duplicate rows
       - sort: {col, asc} — sort rows
+      - compute: {new_col, expr} — create new column from pandas eval expression
       - summarize: {group_by, agg} — group-by aggregation
         agg: {col: func}  func in sum/mean/count/min/max/first/last
     """
@@ -119,6 +120,12 @@ def apply_rule(df: pd.DataFrame, rule: dict) -> pd.DataFrame:
         if not by:
             return df
         return df.sort_values(by=by, ascending=rule.get("asc", True))
+
+    if t == "compute":
+        new_col = rule["new_col"]
+        expr = rule["expr"]  # e.g. "Lineitem quantity * Lineitem price"
+        df[new_col] = df.eval(expr)
+        return df
 
     if t == "summarize":
         group_cols = [c for c in rule["group_by"] if c in df.columns]

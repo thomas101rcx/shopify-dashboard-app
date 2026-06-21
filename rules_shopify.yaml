@@ -22,9 +22,13 @@ rules:
       Lineitem price: float
       Created at: datetime
 
+  - type: compute
+    new_col: Total amount
+    expr: "Lineitem quantity * Lineitem price"
+
   - type: summarize
     group_by: [Billing Company, Created at]
     agg:
       Lineitem quantity: sum
-      Lineitem price: sum
+      Total amount: sum
       Lineitem sku: list
