@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import config as cfg
 from merge import generate_updated_pivot_xlsx, merge_overview_with_etl, updated_overview_with_etl
 from overview import (
     load_24y_25n,
@@ -27,9 +28,8 @@ page = st.sidebar.radio("Page", ["ETL", "Overview", "Merge"], index=0)
 
 
 def _read_excel(path: str, sheet: str | None = None) -> pd.DataFrame:
-    engines = ["calamine", "openpyxl", None]
     last_err = None
-    for engine in engines:
+    for engine in cfg.EXCEL_ENGINES:
         try:
             result = pd.read_excel(path, sheet_name=sheet, engine=engine)
             if isinstance(result, dict):
@@ -174,15 +174,8 @@ elif page == "Overview":
             styled_rows = load_overview_styled(wb)
             label_rules = load_label_rules(wb)
 
-            cols = ["Account", "Account Label", "Qty_2023", "23-24 Growth", "Qty_2024",
-                    "24-25 Growth", "Qty_2025", "25-26 Growth", "Qty_2026_",
-                    "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]
-            # Map col name -> 1-based index in xlsx
-            col_to_xlsx_idx = {
-                "Account": 1, "Account Label": 2, "Qty_2023": 3, "23-24 Growth": 4,
-                "Qty_2024": 5, "24-25 Growth": 6, "Qty_2025": 7, "25-26 Growth": 8,
-                "Qty_2026_": 9, "Qty_2026_1": 10, "Qty_2026_2": 11, "Qty_2026_3": 12, "Qty_2026_4": 13,
-            }
+            cols = cfg.OVERVIEW_COLS
+            col_to_xlsx_idx = cfg.COL_TO_XLSX_IDX
 
             data_rows = []
             # Per-row, per-column style info: {(row_idx, col_name): style_dict}
@@ -204,43 +197,40 @@ elif page == "Overview":
 
             df = pd.DataFrame(data_rows, columns=cols)
 
-            # Ensure all numeric qty columns are numeric (None → 0)
-            for c in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
+            for c in cfg.QTY_COLS:
                 df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
 
-            # Compute Qty_2026_ = sum of week columns
-            df["Qty_2026_"] = df["Qty_2026_1"] + df["Qty_2026_2"] + df["Qty_2026_3"] + df["Qty_2026_4"]
+            df[cfg.COL_QTY_2026_TOTAL] = (
+                df[cfg.COL_QTY_2026_Q1] + df[cfg.COL_QTY_2026_Q2]
+                + df[cfg.COL_QTY_2026_Q3] + df[cfg.COL_QTY_2026_Q4]
+            )
 
-            # Growth: compute only for rows where original xlsx value was numeric
-            # Preserve text labels (New_24, Lost, SOS, etc.) from original xlsx
             def _growth(new, old):
                 if old == 0:
                     return None
                 return (new - old) / old
 
             growth_col_defs = [
-                ("23-24 Growth", "Qty_2024", "Qty_2023"),
-                ("24-25 Growth", "Qty_2025", "Qty_2024"),
-                ("25-26 Growth", "Qty_2026_", "Qty_2025"),
+                (cfg.COL_GROWTH_23_24, cfg.COL_QTY_2024, cfg.COL_QTY_2023),
+                (cfg.COL_GROWTH_24_25, cfg.COL_QTY_2025, cfg.COL_QTY_2024),
+                (cfg.COL_GROWTH_25_26, cfg.COL_QTY_2026_TOTAL, cfg.COL_QTY_2025),
             ]
 
             for gcol, new_col, old_col in growth_col_defs:
                 computed = df.apply(lambda r: _growth(r[new_col], r[old_col]), axis=1)
-                # Keep original text label where it exists, use computed % where original was numeric
                 xlsx_idx = col_to_xlsx_idx[gcol]
                 for i in range(len(df)):
                     original_styled = styled_rows[i].get(xlsx_idx, {})
                     original_val = original_styled.get("value")
                     is_numeric_original = original_styled.get("is_numeric", False)
                     if isinstance(original_val, str) and original_val.strip():
-                        # Preserve text label from xlsx
                         df.at[i, gcol] = original_val
                     elif is_numeric_original:
-                        df.at[i, gcol] = original_val  # Keep original numeric
+                        df.at[i, gcol] = original_val
                     else:
-                        df.at[i, gcol] = computed.iloc[i]  # Use computed
+                        df.at[i, gcol] = computed.iloc[i]
 
-            growth_col_set = {"23-24 Growth", "24-25 Growth", "25-26 Growth"}
+            growth_col_set = set(cfg.GROWTH_COLS)
 
             def _fmt_cell(v, col_name=None):
                 """Format cell: % for growth, int for qty, str for text labels."""
@@ -263,11 +253,7 @@ elif page == "Overview":
                 fill = (style or {}).get("fill")
                 font_color = (style or {}).get("font_color")
 
-                badge_map = {
-                    "new": ("#FFF9C4", "#F57F17", "🟡"),
-                    "lost": ("#FFCDD2", "#C62828", "🔴"),
-                    "reactivated": ("#C8E6C9", "#2E7D32", "🟢"),
-                }
+                badge_map = cfg.BADGE_STYLES
 
                 if label_type in badge_map:
                     bg, fg, dot = badge_map[label_type]
@@ -278,7 +264,7 @@ elif page == "Overview":
                     display = _fmt_cell(val, col_name)
                     return f'<td style="color:{font_color};font-weight:600;padding:4px 8px;">{display}</td>'
 
-                if fill and fill not in ("#FFF2CEEF", None):
+                if fill and fill not in (cfg.FILL_COLORS.get("FFF2CEEF"), None):
                     display = _fmt_cell(val, col_name)
                     return f'<td style="background:{fill};padding:4px 8px;">{display}</td>'
 
@@ -344,25 +330,22 @@ elif page == "Overview":
 
     with tab_lost:
         try:
-            ws = wb["Lost Account "]
+            ws = wb[cfg.SHEET_LOST_ACCOUNT]
             rows = []
             for r in range(3, ws.max_row + 1):
-                row_vals = [ws.cell(row=r, column=c).value for c in range(1, 14)]
+                row_vals = [ws.cell(row=r, column=c).value for c in range(1, cfg.OVERVIEW_NUM_COLS + 1)]
                 if all(v is None for v in row_vals):
                     continue
                 rows.append(row_vals)
-            cols = ["Account", "Account Label", "Qty_2023", "23-24 Growth", "Qty_2024",
-                    "24-25 Growth", "Qty_2025", "25-26 Growth", "Qty_2026_",
-                    "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]
             if rows:
-                df = pd.DataFrame(rows, columns=cols)
+                df = pd.DataFrame(rows, columns=cfg.OVERVIEW_COLS)
                 st.dataframe(df, use_container_width=True, height=400)
         except Exception as e:
             st.error(f"Failed to load Lost Account: {e}")
 
     with tab_count:
         try:
-            ws = wb["Count"]
+            ws = wb[cfg.SHEET_COUNT]
             rows = []
             for r in range(2, ws.max_row + 1):
                 row_vals = [ws.cell(row=r, column=c).value for c in range(1, 8)]
@@ -377,7 +360,7 @@ elif page == "Overview":
 
     with tab_24y:
         try:
-            ws = wb["24Y 25N"]
+            ws = wb[cfg.SHEET_24Y_25N]
             rows = []
             for r in range(2, ws.max_row + 1):
                 row_vals = [ws.cell(row=r, column=c).value for c in range(1, 8)]
@@ -392,7 +375,7 @@ elif page == "Overview":
 
     with tab_labels:
         try:
-            ws = wb["Account Label Definition "]
+            ws = wb[cfg.SHEET_LABEL_DEFINITION]
             rows = []
             for r in range(3, ws.max_row + 1):
                 row_vals = [ws.cell(row=r, column=c).value for c in range(1, 5)]
@@ -408,7 +391,7 @@ elif page == "Overview":
 
     with tab_dupes:
         try:
-            ws = wb["Dupilicate Accounts "]
+            ws = wb[cfg.SHEET_DUPLICATES]
             rows = []
             for r in range(1, ws.max_row + 1):
                 row_vals = [ws.cell(row=r, column=c).value for c in range(1, 3)]
@@ -467,9 +450,9 @@ elif page == "Merge":
                 etl = pd.read_csv(tmp)
             else:
                 try:
-                    etl = pd.read_excel(tmp, engine="calamine")
+                    etl = pd.read_excel(tmp, engine=cfg.EXCEL_ENGINES[0])
                 except Exception:
-                    etl = pd.read_excel(tmp, engine="openpyxl")
+                    etl = pd.read_excel(tmp, engine=cfg.EXCEL_ENGINES[1])
         except Exception as e:
             st.error(f"Failed to read file: {e}")
             st.stop()
@@ -502,7 +485,7 @@ elif page == "Merge":
 
     with tab1:
         merged = merge_overview_with_etl(etl)
-        new_count = merged["Qty_2023"].eq(0) & merged["Qty_2024"].eq(0) & merged["Qty_2025"].eq(0) & merged["ETL_Total"].gt(0)
+        new_count = merged[cfg.COL_QTY_2023].eq(0) & merged[cfg.COL_QTY_2024].eq(0) & merged[cfg.COL_QTY_2025].eq(0) & merged["ETL_Total"].gt(0)
         # Build dynamic ETL column list for display
         etl_cols = [c for c in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"] if c in merged.columns]
         overview_cols = [c for c in merged.columns if c not in etl_cols]
@@ -516,7 +499,7 @@ elif page == "Merge":
 
     with tab2:
         updated = updated_overview_with_etl(etl)
-        new_count = updated["Qty_2023"].eq(0) & updated["Qty_2024"].eq(0) & updated["Qty_2025"].eq(0) & updated["Qty_2026_"].gt(0)
+        new_count = updated[cfg.COL_QTY_2023].eq(0) & updated[cfg.COL_QTY_2024].eq(0) & updated[cfg.COL_QTY_2025].eq(0) & updated[cfg.COL_QTY_2026_TOTAL].gt(0)
         st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — ETL qty added to correct quarter, Qty_2026_ recomputed")
         st.dataframe(updated, use_container_width=True, height=600)
 

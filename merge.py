@@ -4,41 +4,33 @@ from __future__ import annotations
 
 import pandas as pd
 
+import config as cfg
 import overview
 from overview import load_overview
 
-# Quarter -> column mapping
-QUARTER_COL = {1: "Qty_2026_1", 2: "Qty_2026_2", 3: "Qty_2026_3", 4: "Qty_2026_4"}
-
-GROWTH_COLS = ["23-24 Growth", "24-25 Growth", "25-26 Growth"]
-
 
 def _assign_growth_label(new_qty: int, old_qty: int, prior_qty_1: int, prior_qty_2: int,
-                          new_label: str = "New_26") -> str | float | None:
+                          new_label: str = cfg.LABEL_NEW_26) -> str | float | None:
     """Assign a growth label or compute numeric growth based on qty pattern.
 
     Rules (derived from original xlsx labeling logic):
-      - New label: old=0, new>0, no prior history → new_label (e.g. "New_24", "New_25", "New_26")
-      - Reactivated: old=0, new>0, has prior history → "Reactivated"
-      - Lost: old=0, new=0, has prior history → "Lost"
+      - New label: old=0, new>0, no prior history → new_label
+      - Reactivated: old=0, new>0, has prior history → Reactivated
+      - Lost: old=0, new=0, has prior history → Lost
       - "/": old=0, new=0, no prior history → "/"
       - Numeric: old>0 → (new - old) / old
-
-    For 23-24 Growth: prior_qty_1 and prior_qty_2 are unused (no earlier years).
-    For 24-25 Growth: prior_qty_1 = Qty_2023, prior_qty_2 unused.
-    For 25-26 Growth: prior_qty_1 = Qty_2024, prior_qty_2 = Qty_2023.
     """
     has_prior = (prior_qty_1 > 0) or (prior_qty_2 > 0)
 
     if old_qty == 0 and new_qty > 0:
         if has_prior:
-            return "Reactivated"
+            return cfg.LABEL_REACTIVATED
         return new_label
 
     if old_qty == 0 and new_qty == 0:
         if has_prior:
-            return "Lost"
-        return "/"
+            return cfg.LABEL_LOST
+        return cfg.LABEL_SLASH
 
     if old_qty > 0:
         return (new_qty - old_qty) / old_qty
@@ -54,50 +46,47 @@ def _restore_original_growth(merged: pd.DataFrame, original: pd.DataFrame) -> pd
     25-26 Growth when ETL changed Qty_2026_ from 0 to >0.
     """
     # Build lookup of original growth labels by account (use first if duplicates)
-    orig_labels = original.drop_duplicates(subset="Account", keep="first").set_index("Account")[GROWTH_COLS].to_dict("index")
+    orig_labels = original.drop_duplicates(subset=cfg.COL_ACCOUNT, keep="first").set_index(cfg.COL_ACCOUNT)[cfg.GROWTH_COLS].to_dict("index")
 
     for i, row in merged.iterrows():
-        acct = row["Account"]
+        acct = row[cfg.COL_ACCOUNT]
         if acct not in orig_labels:
-            # New ETL-only account — assign labels from scratch
             _assign_all_growth_for_new_account(merged, i, row)
             continue
 
         orig = orig_labels[acct]
 
         # 23-24 and 24-25 Growth: always preserve (ETL doesn't affect past years)
-        merged.at[i, "23-24 Growth"] = orig["23-24 Growth"]
-        merged.at[i, "24-25 Growth"] = orig["24-25 Growth"]
+        merged.at[i, cfg.COL_GROWTH_23_24] = orig[cfg.COL_GROWTH_23_24]
+        merged.at[i, cfg.COL_GROWTH_24_25] = orig[cfg.COL_GROWTH_24_25]
 
         # 25-26 Growth: preserve unless ETL changed Qty_2026_ from 0 to >0
-        orig_25_26 = orig["25-26 Growth"]
-        orig_q26 = row.get("_orig_Qty_2026_", row["Qty_2026_"])  # original Q26 before merge
-        new_q26 = row["Qty_2026_"]
+        orig_25_26 = orig[cfg.COL_GROWTH_25_26]
+        orig_q26 = row.get("_orig_Qty_2026_", row[cfg.COL_QTY_2026_TOTAL])
+        new_q26 = row[cfg.COL_QTY_2026_TOTAL]
 
         if orig_q26 == 0 and new_q26 > 0:
-            # ETL added purchases where there were none — recompute label
-            has_prior = (row["Qty_2023"] > 0) or (row["Qty_2024"] > 0) or (row["Qty_2025"] > 0)
+            has_prior = (row[cfg.COL_QTY_2023] > 0) or (row[cfg.COL_QTY_2024] > 0) or (row[cfg.COL_QTY_2025] > 0)
             if has_prior:
-                merged.at[i, "25-26 Growth"] = "Reactivated"
+                merged.at[i, cfg.COL_GROWTH_25_26] = cfg.LABEL_REACTIVATED
             else:
-                merged.at[i, "25-26 Growth"] = "New_26"
+                merged.at[i, cfg.COL_GROWTH_25_26] = cfg.LABEL_NEW_26
         else:
-            # Preserve original label (Lost, SOS, numeric, etc.)
-            merged.at[i, "25-26 Growth"] = orig_25_26
+            merged.at[i, cfg.COL_GROWTH_25_26] = orig_25_26
 
     return merged
 
 
 def _assign_all_growth_for_new_account(merged: pd.DataFrame, i, row) -> None:
     """Assign growth labels for a new ETL-only account (not in original Overview)."""
-    q23, q24, q25, q26 = int(row["Qty_2023"]), int(row["Qty_2024"]), int(row["Qty_2025"]), int(row["Qty_2026_"])
+    q23 = int(row[cfg.COL_QTY_2023])
+    q24 = int(row[cfg.COL_QTY_2024])
+    q25 = int(row[cfg.COL_QTY_2025])
+    q26 = int(row[cfg.COL_QTY_2026_TOTAL])
 
-    # 23-24 Growth
-    merged.at[i, "23-24 Growth"] = _assign_growth_label(q24, q23, 0, 0, new_label="New_24")
-    # 24-25 Growth
-    merged.at[i, "24-25 Growth"] = _assign_growth_label(q25, q24, q23, 0, new_label="New_25")
-    # 25-26 Growth
-    merged.at[i, "25-26 Growth"] = _assign_growth_label(q26, q25, q24, q23, new_label="New_26")
+    merged.at[i, cfg.COL_GROWTH_23_24] = _assign_growth_label(q24, q23, 0, 0, new_label=cfg.LABEL_NEW_24)
+    merged.at[i, cfg.COL_GROWTH_24_25] = _assign_growth_label(q25, q24, q23, 0, new_label=cfg.LABEL_NEW_25)
+    merged.at[i, cfg.COL_GROWTH_25_26] = _assign_growth_label(q26, q25, q24, q23, new_label=cfg.LABEL_NEW_26)
 
 
 def _month_to_quarter(month: int) -> int:
@@ -107,7 +96,7 @@ def _month_to_quarter(month: int) -> int:
 
 def _quarter_col(month: int) -> str:
     """Return the Qty_2026_N column name for a given month."""
-    return QUARTER_COL[_month_to_quarter(month)]
+    return cfg.QUARTER_TO_COL[_month_to_quarter(month)]
 
 
 def aggregate_etl_by_quarter(etl: pd.DataFrame) -> pd.DataFrame:
@@ -155,128 +144,84 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     ov = load_overview()
     etl_agg = aggregate_etl_by_quarter(etl)
 
-    # Store original Qty_2026_ before merge for label logic
     ov = ov.copy()
-    ov["_orig_Qty_2026_"] = ov["Qty_2026_"]
+    ov["_orig_Qty_2026_"] = ov[cfg.COL_QTY_2026_TOTAL]
 
-    merged = ov.merge(etl_agg, on="Account", how="outer")
+    merged = ov.merge(etl_agg, on=cfg.COL_ACCOUNT, how="outer")
 
-    # Fill NaN ETL columns with 0
     for col in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"]:
         if col in merged.columns:
             merged[col] = merged[col].fillna(0).astype(int)
 
-    # Fill NaN Overview numeric columns with 0 (new ETL-only accounts)
-    for col in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_",
-                "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
+    for col in cfg.QTY_COLS + [cfg.COL_QTY_2026_TOTAL]:
         if col in merged.columns:
             merged[col] = merged[col].fillna(0).astype(int)
 
-    # Fill NaN text columns
-    for col in ["Account Label"]:
-        if col in merged.columns:
-            merged[col] = merged[col].fillna("")
+    merged[cfg.COL_ACCOUNT_LABEL] = merged[cfg.COL_ACCOUNT_LABEL].fillna("")
 
     merged["_orig_Qty_2026_"] = merged["_orig_Qty_2026_"].fillna(0).astype(int)
 
-    # Add ETL qty to correct quarter columns
     for q_num in range(1, 5):
         etl_q = f"ETL_Q{q_num}"
-        pivot_q = f"Qty_2026_{q_num}"
+        pivot_q = cfg.QUARTER_TO_COL[q_num]
         merged[pivot_q] = merged[pivot_q] + merged[etl_q]
 
-    merged["Qty_2026_"] = (
-        merged["Qty_2026_1"] + merged["Qty_2026_2"]
-        + merged["Qty_2026_3"] + merged["Qty_2026_4"]
-    )
+    merged[cfg.COL_QTY_2026_TOTAL] = sum(merged[cfg.QUARTER_TO_COL[q]] for q in range(1, 5))
 
-    # Restore growth labels (preserve original, recompute only when needed)
     merged = _restore_original_growth(merged, ov)
 
-    # Drop helper columns
-    merged = merged.drop(columns=["_orig_Qty_2026_"], errors="ignore")
-
-    return merged
+    return merged.drop(columns=["_orig_Qty_2026_"], errors="ignore")
 
 
 def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     """Return Overview with ETL data added to the correct quarter column.
 
-    ETL orders are grouped by quarter (Jan-Mar -> Qty_2026_1, Apr-Jun -> Qty_2026_2,
-    Jul-Sep -> Qty_2026_3, Oct-Dec -> Qty_2026_4).
-    Qty_2026_ = Qty_2026_1 + Qty_2026_2 + Qty_2026_3 + Qty_2026_4 (recomputed).
-
-    New accounts in ETL (not in Overview) are appended with ETL qty in the
-    correct quarter column. Original growth labels are preserved.
+    ETL orders are grouped by quarter (Jan-Mar → Q1, Apr-Jun → Q2, Jul-Sep → Q3, Oct-Dec → Q4).
+    Qty_2026_ = sum of all quarter columns (recomputed).
+    Original growth labels are preserved.
     """
     ov = load_overview()
     etl_agg = aggregate_etl_by_quarter(etl)
 
-    # Store original Qty_2026_ before merge for label logic
     ov = ov.copy()
-    ov["_orig_Qty_2026_"] = ov["Qty_2026_"]
+    ov["_orig_Qty_2026_"] = ov[cfg.COL_QTY_2026_TOTAL]
 
-    updated = ov.merge(etl_agg, on="Account", how="outer")
+    updated = ov.merge(etl_agg, on=cfg.COL_ACCOUNT, how="outer")
 
-    # Fill NaN ETL quarter columns with 0
     for q in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4"]:
         updated[q] = updated[q].fillna(0).astype(int)
 
-    # Fill NaN Overview numeric columns with 0 (new ETL-only accounts)
-    for col in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_",
-                "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
+    for col in cfg.QTY_COLS + [cfg.COL_QTY_2026_TOTAL]:
         if col in updated.columns:
             updated[col] = updated[col].fillna(0).astype(int)
 
-    # Fill NaN text columns
-    for col in ["Account Label"]:
-        if col in updated.columns:
-            updated[col] = updated[col].fillna("")
-
+    updated[cfg.COL_ACCOUNT_LABEL] = updated[cfg.COL_ACCOUNT_LABEL].fillna("")
     updated["_orig_Qty_2026_"] = updated["_orig_Qty_2026_"].fillna(0).astype(int)
 
-    # Add ETL qty to the correct quarter column
     for q_num in range(1, 5):
-        etl_q = f"ETL_Q{q_num}"
-        pivot_q = f"Qty_2026_{q_num}"
-        updated[pivot_q] = updated[pivot_q] + updated[etl_q]
+        updated[cfg.QUARTER_TO_COL[q_num]] += updated[f"ETL_Q{q_num}"]
 
-    # Recompute Qty_2026_ = sum of all quarter columns
-    updated["Qty_2026_"] = (
-        updated["Qty_2026_1"] + updated["Qty_2026_2"]
-        + updated["Qty_2026_3"] + updated["Qty_2026_4"]
-    )
+    updated[cfg.COL_QTY_2026_TOTAL] = sum(updated[cfg.QUARTER_TO_COL[q]] for q in range(1, 5))
 
-    # Drop helper ETL columns
     updated = updated.drop(columns=["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"], errors="ignore")
-
-    # Restore growth labels (preserve original, recompute only when needed)
     updated = _restore_original_growth(updated, ov)
 
-    # Drop helper columns
-    updated = updated.drop(columns=["_orig_Qty_2026_"], errors="ignore")
-
-    return updated
+    return updated.drop(columns=["_orig_Qty_2026_"], errors="ignore")
 
 
 def compute_count(updated: pd.DataFrame) -> dict:
-    """Compute Count tab row values from an updated Overview DataFrame.
-
-    Returns dict:
-      {"Total Account": int, "Lost": int, "New_26": int,
-       "No Purchase 2026 / Not Lost": int, "Already Purchased 2026": int}
-    """
+    """Compute Count tab row values from an updated Overview DataFrame."""
     total = len(df := updated)
-    lost = int((df["25-26 Growth"] == "Lost").sum())
-    new_26 = int((df["25-26 Growth"] == "New_26").sum())
-    no_purchase = int(((df["Qty_2026_"] == 0) & (df["25-26 Growth"] != "Lost")).sum())
-    already = int((df["Qty_2026_"] > 0).sum())
+    lost = int((df[cfg.COL_GROWTH_25_26] == cfg.LABEL_LOST).sum())
+    new_26 = int((df[cfg.COL_GROWTH_25_26] == cfg.LABEL_NEW_26).sum())
+    no_purchase = int(((df[cfg.COL_QTY_2026_TOTAL] == 0) & (df[cfg.COL_GROWTH_25_26] != cfg.LABEL_LOST)).sum())
+    already = int((df[cfg.COL_QTY_2026_TOTAL] > 0).sum())
     return {
-        "Total Account": total,
-        "Lost": lost,
-        "New_26": new_26,
-        "No Purchase 2026 / Not Lost": no_purchase,
-        "Already Purchased 2026": already,
+        cfg.COUNT_ROW_LABELS[0]: total,
+        cfg.COUNT_ROW_LABELS[1]: lost,
+        cfg.COUNT_ROW_LABELS[2]: new_26,
+        cfg.COUNT_ROW_LABELS[3]: no_purchase,
+        cfg.COUNT_ROW_LABELS[4]: already,
     }
 
 
@@ -292,23 +237,14 @@ def etl_date_label(etl: pd.DataFrame) -> str:
 
 
 def add_count_column(wb, label: str, updated: pd.DataFrame) -> None:
-    """Append a new column to the Count sheet with updated counts.
-
-    wb: openpyxl workbook (already loaded)
-    label: date range string for the column header (e.g. '0601-0618')
-    updated: post-merge Overview DataFrame
-    """
-    ws = wb["Count"]
+    """Append a new column to the Count sheet with updated counts."""
+    ws = wb[cfg.SHEET_COUNT]
     new_col = ws.max_column + 1
 
-    # Header
     ws.cell(row=1, column=new_col, value=label)
 
-    # Data rows
     counts = compute_count(updated)
-    row_labels = ["Total Account", "Lost", "New_26",
-                  "No Purchase 2026 / Not Lost", "Already Purchased 2026"]
-    for i, lbl in enumerate(row_labels, start=2):
+    for i, lbl in enumerate(cfg.COUNT_ROW_LABELS, start=2):
         ws.cell(row=i, column=new_col, value=counts[lbl])
 
 
@@ -329,77 +265,57 @@ def generate_updated_pivot_xlsx(etl: pd.DataFrame, output_path: str) -> None:
     shutil.copy(src, output_path)
 
     wb = load_workbook(output_path)
-    ws = wb["Overview"]
+    ws = wb[cfg.SHEET_OVERVIEW]
+    ncols = cfg.OVERVIEW_NUM_COLS
 
     # Clear old data rows (3 onwards) — keep rows 1-2 (title + header)
     for r in range(3, ws.max_row + 1):
-        for c in range(1, 14):
+        for c in range(1, ncols + 1):
             ws.cell(row=r, column=c).value = None
 
-    # Row 1: updated date
-    ws.cell(row=1, column=1).value = f"Updated by {date.today().strftime('%m/%d/%Y')}"
+    ws.cell(row=1, column=1, value=f"Updated by {date.today().strftime('%m/%d/%Y')}")
 
-    # Build updated overview
     updated = updated_overview_with_etl(etl)
 
-    # Write data rows
+    # Map column names to xlsx positions
+    c = cfg.COL_TO_XLSX_IDX
+
     for idx, row in updated.iterrows():
         r = idx + 3
-        ws.cell(row=r, column=1, value=row["Account"])
-        ws.cell(row=r, column=2, value=row["Account Label"] if pd.notna(row["Account Label"]) else None)
-        ws.cell(row=r, column=3, value=int(row["Qty_2023"]))
+        ws.cell(row=r, column=c[cfg.COL_ACCOUNT], value=row[cfg.COL_ACCOUNT])
+        ws.cell(row=r, column=c[cfg.COL_ACCOUNT_LABEL], value=row[cfg.COL_ACCOUNT_LABEL] if pd.notna(row[cfg.COL_ACCOUNT_LABEL]) else None)
+        ws.cell(row=r, column=c[cfg.COL_QTY_2023], value=int(row[cfg.COL_QTY_2023]))
 
-        # 23-24 Growth: formula or label
-        g_23_24 = row["23-24 Growth"]
-        if pd.isna(g_23_24):
-            ws.cell(row=r, column=4, value=None)
-        elif isinstance(g_23_24, (int, float)):
-            ws.cell(row=r, column=4, value=g_23_24)
-        else:
-            ws.cell(row=r, column=4, value=g_23_24)
+        for gcol in cfg.GROWTH_COLS:
+            val = row[gcol]
+            if pd.isna(val):
+                ws.cell(row=r, column=c[gcol], value=None)
+            else:
+                ws.cell(row=r, column=c[gcol], value=val)
 
-        ws.cell(row=r, column=5, value=int(row["Qty_2024"]))
+        ws.cell(row=r, column=c[cfg.COL_QTY_2024], value=int(row[cfg.COL_QTY_2024]))
+        ws.cell(row=r, column=c[cfg.COL_QTY_2025], value=int(row[cfg.COL_QTY_2025]))
 
-        g_24_25 = row["24-25 Growth"]
-        if pd.isna(g_24_25):
-            ws.cell(row=r, column=6, value=None)
-        elif isinstance(g_24_25, (int, float)):
-            ws.cell(row=r, column=6, value=g_24_25)
-        else:
-            ws.cell(row=r, column=6, value=g_24_25)
-
-        ws.cell(row=r, column=7, value=int(row["Qty_2025"]))
-
-        # 25-26 Growth
-        g_25_26 = row["25-26 Growth"]
-        if pd.isna(g_25_26):
-            ws.cell(row=r, column=8, value=None)
-        elif isinstance(g_25_26, (int, float)):
-            ws.cell(row=r, column=8, value=g_25_26)
-        else:
-            ws.cell(row=r, column=8, value=g_25_26)
-
-        # Qty_2026_ = SUM of week columns (formula)
-        ws.cell(row=r, column=9, value=f"=SUM(J{r}:M{r})")
-        ws.cell(row=r, column=10, value=int(row["Qty_2026_1"]))
-        ws.cell(row=r, column=11, value=int(row["Qty_2026_2"]))
-        ws.cell(row=r, column=12, value=int(row["Qty_2026_3"]))
-        ws.cell(row=r, column=13, value=int(row["Qty_2026_4"]))
+        # Qty_2026_ = SUM formula
+        ws.cell(row=r, column=c[cfg.COL_QTY_2026_TOTAL], value=f"=SUM(J{r}:M{r})")
+        ws.cell(row=r, column=c[cfg.COL_QTY_2026_Q1], value=int(row[cfg.COL_QTY_2026_Q1]))
+        ws.cell(row=r, column=c[cfg.COL_QTY_2026_Q2], value=int(row[cfg.COL_QTY_2026_Q2]))
+        ws.cell(row=r, column=c[cfg.COL_QTY_2026_Q3], value=int(row[cfg.COL_QTY_2026_Q3]))
+        ws.cell(row=r, column=c[cfg.COL_QTY_2026_Q4], value=int(row[cfg.COL_QTY_2026_Q4]))
 
     # Subtotal row
-    last_data_row = len(updated) + 2  # +2 because data starts at row 3
+    last_data_row = len(updated) + 2
     sub_row = last_data_row + 1
-    ws.cell(row=sub_row, column=5, value=f"=SUM(E3:E{last_data_row})")
-    ws.cell(row=sub_row, column=7, value=f"=SUM(G3:G{last_data_row})")
-    ws.cell(row=sub_row, column=9, value=f"=SUM(I3:I{last_data_row})")
-    ws.cell(row=sub_row, column=10, value=f"=SUM(J3:J{last_data_row})")
-    ws.cell(row=sub_row, column=11, value=f"=SUM(K3:K{last_data_row})")
+    ws.cell(row=sub_row, column=c[cfg.COL_QTY_2024], value=f"=SUM(E3:E{last_data_row})")
+    ws.cell(row=sub_row, column=c[cfg.COL_QTY_2025], value=f"=SUM(G3:G{last_data_row})")
+    ws.cell(row=sub_row, column=c[cfg.COL_QTY_2026_TOTAL], value=f"=SUM(I3:I{last_data_row})")
+    ws.cell(row=sub_row, column=c[cfg.COL_QTY_2026_Q1], value=f"=SUM(J3:J{last_data_row})")
+    ws.cell(row=sub_row, column=c[cfg.COL_QTY_2026_Q2], value=f"=SUM(K3:K{last_data_row})")
 
     # Count rows
-    ws.cell(row=sub_row + 1, column=9, value=f"=COUNTIF(I3:I{last_data_row},0)")
-    ws.cell(row=sub_row + 2, column=9, value=f"=COUNTIF(I3:I{last_data_row}, \"<>0\")")
+    ws.cell(row=sub_row + 1, column=c[cfg.COL_QTY_2026_TOTAL], value=f"=COUNTIF(I3:I{last_data_row},0)")
+    ws.cell(row=sub_row + 2, column=c[cfg.COL_QTY_2026_TOTAL], value=f"=COUNTIF(I3:I{last_data_row}, \"<>0\")")
 
-    # Append new column to Count tab
     add_count_column(wb, etl_date_label(etl), updated)
 
     wb.save(output_path)

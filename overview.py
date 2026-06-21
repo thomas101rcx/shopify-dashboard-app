@@ -4,20 +4,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-PIVOT_PATH = "pivot_table.xlsx"
+import config as cfg
 
-# Color palette extracted from original xlsx
-FILL_COLORS = {
-    "FFF2CEEF": "#FFF2CEEF",  # light orange (header background)
-    "FFFFFF00": "#FFFF00",  # yellow (New labels)
-    "FFFF0000": "#FF0000",  # red (Lost labels)
-    "FF92D050": "#92D050",  # green (Reactivated)
-}
-FONT_COLORS = {
-    "FF000000": "#000000",
-    "FFFF0000": "#FF0000",
-    "FF303030": "#303030",
-}
+PIVOT_PATH = "pivot_table.xlsx"
 
 
 def _load_raw_sheet(name: str) -> pd.DataFrame:
@@ -42,7 +31,7 @@ def _resolve_fill(cell) -> str | None:
         return None
     rgb = cell.fill.fgColor.rgb
     if rgb and rgb != "00000000" and not str(rgb).startswith("Values"):
-        return FILL_COLORS.get(rgb, f"#{rgb}")
+        return cfg.FILL_COLORS.get(rgb, f"#{rgb}")
     return None
 
 
@@ -51,7 +40,7 @@ def _resolve_font_color(cell) -> str | None:
         return None
     rgb = cell.font.color.rgb
     if rgb and rgb != "00000000" and not str(rgb).startswith("Values"):
-        return FONT_COLORS.get(rgb, f"#{rgb}")
+        return cfg.FONT_COLORS.get(rgb, f"#{rgb}")
     return None
 
 
@@ -59,14 +48,8 @@ def _has_colored_label(cell) -> str | None:
     """Return label type based on cell fill color."""
     if not cell.fill or not cell.fill.fgColor:
         return None
-    rgb = cell.fill.fgColor.rgb
-    if str(rgb) == "FFFFFF00":
-        return "new"
-    if str(rgb) == "FFFF0000":
-        return "lost"
-    if str(rgb) == "FF92D050":
-        return "reactivated"
-    return None
+    rgb = str(cell.fill.fgColor.rgb)
+    return cfg.FILL_TO_LABEL_TYPE.get(rgb)
 
 
 def load_overview() -> pd.DataFrame:
@@ -77,46 +60,43 @@ def load_overview() -> pd.DataFrame:
     """
     from openpyxl import load_workbook as _lw
     wb = _lw(PIVOT_PATH, data_only=True)
-    ws = wb["Overview"]
+    ws = wb[cfg.SHEET_OVERVIEW]
 
-    cols = ["Account", "Account Label", "Qty_2023", "23-24 Growth", "Qty_2024",
-            "24-25 Growth", "Qty_2025", "25-26 Growth", "Qty_2026_",
-            "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]
+    cols = cfg.OVERVIEW_COLS
+    ncols = cfg.OVERVIEW_NUM_COLS
 
     data_rows = []
     for r in range(3, ws.max_row + 1):
-        row_vals = [ws.cell(row=r, column=c).value for c in range(1, 14)]
+        row_vals = [ws.cell(row=r, column=c).value for c in range(1, ncols + 1)]
         if all(v is None for v in row_vals):
             continue
-        # Stop at subtotal row: Account (col 1) is None/empty but other cols have values
         if not row_vals[0]:
             break
         data_rows.append(row_vals)
 
     df = pd.DataFrame(data_rows, columns=cols)
 
-    # Ensure qty columns are numeric
-    for c in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
+    for c in cfg.QTY_COLS:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
 
-    df["Qty_2026_"] = (
-        df["Qty_2026_1"] + df["Qty_2026_2"] + df["Qty_2026_3"] + df["Qty_2026_4"]
+    df[cfg.COL_QTY_2026_TOTAL] = (
+        df[cfg.COL_QTY_2026_Q1] + df[cfg.COL_QTY_2026_Q2]
+        + df[cfg.COL_QTY_2026_Q3] + df[cfg.COL_QTY_2026_Q4]
     )
 
-    # Growth: preserve text labels, compute % only for originally-numeric cells
     growth_defs = [
-        ("23-24 Growth", "Qty_2024", "Qty_2023"),
-        ("24-25 Growth", "Qty_2025", "Qty_2024"),
-        ("25-26 Growth", "Qty_2026_", "Qty_2025"),
+        (cfg.COL_GROWTH_23_24, cfg.COL_QTY_2024, cfg.COL_QTY_2023),
+        (cfg.COL_GROWTH_24_25, cfg.COL_QTY_2025, cfg.COL_QTY_2024),
+        (cfg.COL_GROWTH_25_26, cfg.COL_QTY_2026_TOTAL, cfg.COL_QTY_2025),
     ]
     for gcol, new_col, old_col in growth_defs:
         computed = df.apply(lambda r: _growth(r[new_col], r[old_col]), axis=1)
         for i in range(len(df)):
             original = df.at[i, gcol]
             if isinstance(original, str) and original.strip():
-                continue  # Keep text label
+                continue
             elif isinstance(original, (int, float)):
-                pass  # Keep original numeric
+                pass
             else:
                 df.at[i, gcol] = computed.iloc[i]
 
@@ -128,18 +108,14 @@ def load_overview_styled(wb) -> list[dict]:
 
     Returns list of dicts keyed by column index (1-based):
       {col_idx: {"value": ..., "fill": str|None, "font_color": str|None, "label_type": str|None, "is_numeric": bool}}
-
-    Growth columns (4, 6, 8) preserve original text labels (New_24, Lost, SOS, etc.).
-    Only numeric growth values get computed as %.
     """
-    ws = wb["Overview"]
+    ws = wb[cfg.SHEET_OVERVIEW]
     rows = []
     for r in range(3, ws.max_row + 1):
-        # Stop at subtotal row: Account (col 1) is None/empty
         if not ws.cell(row=r, column=1).value:
             break
         row_data = {}
-        for c in range(1, 14):
+        for c in range(1, cfg.OVERVIEW_NUM_COLS + 1):
             cell = ws.cell(row=r, column=c)
             if cell.value is None:
                 continue
@@ -161,7 +137,7 @@ def load_label_rules(wb) -> dict:
 
     Returns dict mapping label name -> {fill, font_color, definition, note}
     """
-    ws = wb["Account Label Definition "]
+    ws = wb[cfg.SHEET_LABEL_DEFINITION]
     rules = {}
     for r in range(3, ws.max_row + 1):
         label_cell = ws.cell(row=r, column=2)
@@ -179,25 +155,28 @@ def load_label_rules(wb) -> dict:
 
 
 def load_lost_accounts() -> pd.DataFrame:
-    df = _load_raw_sheet("Lost Account ")
+    df = _load_raw_sheet(cfg.SHEET_LOST_ACCOUNT)
     data = df.iloc[2:].copy()
-    data.columns = range(13)
+    data.columns = range(cfg.OVERVIEW_NUM_COLS)
     data = data.rename(columns={
-        0: "Account", 1: "Account Label",
-        2: "Qty_2023", 3: "23-24 Growth", 4: "Qty_2024",
-        5: "24-25 Growth", 6: "Qty_2025", 7: "25-26 Growth",
-        8: "Qty_2026_", 9: "Qty_2026_1", 10: "Qty_2026_2",
-        11: "Qty_2026_3", 12: "Qty_2026_4",
+        0: cfg.COL_ACCOUNT, 1: cfg.COL_ACCOUNT_LABEL,
+        2: cfg.COL_QTY_2023, 3: cfg.COL_GROWTH_23_24, 4: cfg.COL_QTY_2024,
+        5: cfg.COL_GROWTH_24_25, 6: cfg.COL_QTY_2025, 7: cfg.COL_GROWTH_25_26,
+        8: cfg.COL_QTY_2026_TOTAL, 9: cfg.COL_QTY_2026_Q1, 10: cfg.COL_QTY_2026_Q2,
+        11: cfg.COL_QTY_2026_Q3, 12: cfg.COL_QTY_2026_Q4,
     })
     data = data.dropna(how="all").reset_index(drop=True)
-    data = data[data["Account"].notna()].reset_index(drop=True)
-    data = _coerce_numeric(data, ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"])
-    data["Qty_2026_"] = data["Qty_2026_1"] + data["Qty_2026_2"] + data["Qty_2026_3"] + data["Qty_2026_4"]
+    data = data[data[cfg.COL_ACCOUNT].notna()].reset_index(drop=True)
+    data = _coerce_numeric(data, cfg.QTY_COLS)
+    data[cfg.COL_QTY_2026_TOTAL] = (
+        data[cfg.COL_QTY_2026_Q1] + data[cfg.COL_QTY_2026_Q2]
+        + data[cfg.COL_QTY_2026_Q3] + data[cfg.COL_QTY_2026_Q4]
+    )
     return data
 
 
 def load_count() -> pd.DataFrame:
-    df = _load_raw_sheet("Count")
+    df = _load_raw_sheet(cfg.SHEET_COUNT)
     data = df.iloc[1:].copy()
     data.columns = ["Label", "0413-0419", "0420-0426", "0427-0503", "0504-0510", "0511-0517", "0518-0531"]
     data = data.dropna(how="all").reset_index(drop=True)
@@ -207,7 +186,7 @@ def load_count() -> pd.DataFrame:
 
 
 def load_account_labels() -> pd.DataFrame:
-    df = _load_raw_sheet("Account Label Definition ")
+    df = _load_raw_sheet(cfg.SHEET_LABEL_DEFINITION)
     data = df.iloc[2:].copy()
     data.columns = ["idx", "Label", "Definition", "Note"]
     data = data.dropna(subset=["Label"]).reset_index(drop=True)
@@ -215,7 +194,7 @@ def load_account_labels() -> pd.DataFrame:
 
 
 def load_24y_25n() -> pd.DataFrame:
-    df = _load_raw_sheet("24Y 25N")
+    df = _load_raw_sheet(cfg.SHEET_24Y_25N)
     data = df.iloc[1:].copy()
     data.columns = range(7)
     data = data.rename(columns={0: "Company", 1: 2024, 2: 2025, 3: 2026, 4: "2025 Carecraft", 5: "email sent", 6: "Date"})
@@ -227,7 +206,7 @@ def load_24y_25n() -> pd.DataFrame:
 
 
 def load_duplicates() -> pd.DataFrame:
-    df = _load_raw_sheet("Dupilicate Accounts ")
+    df = _load_raw_sheet(cfg.SHEET_DUPLICATES)
     data = df.copy()
     data.columns = ["Account", "Note"]
     data = data.dropna(subset=["Account"]).reset_index(drop=True)
