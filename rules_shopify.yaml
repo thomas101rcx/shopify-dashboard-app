@@ -24,7 +24,9 @@ rules:
 
   - type: compute
     new_col: Total amount
-    expr: "Lineitem quantity * Lineitem price"
+    left_col: Lineitem quantity
+    right_col: Lineitem price
+    op: "*"
 
   - type: summarize
     group_by: [Billing Company, Created at]

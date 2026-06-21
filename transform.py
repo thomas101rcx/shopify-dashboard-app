@@ -33,7 +33,7 @@ def apply_rule(df: pd.DataFrame, rule: dict) -> pd.DataFrame:
       - fill_na: {col: value} — fill NA
       - dedup: list[str] — drop duplicate rows
       - sort: {col, asc} — sort rows
-      - compute: {new_col, expr} — create new column from pandas eval expression
+      - compute: {new_col, left_col, right_col, op} — create new column from binary op (+, -, *, /)
       - summarize: {group_by, agg} — group-by aggregation
         agg: {col: func}  func in sum/mean/count/min/max/first/last
     """
@@ -123,8 +123,11 @@ def apply_rule(df: pd.DataFrame, rule: dict) -> pd.DataFrame:
 
     if t == "compute":
         new_col = rule["new_col"]
-        expr = rule["expr"]  # e.g. "Lineitem quantity * Lineitem price"
-        df[new_col] = df.eval(expr)
+        left = df[rule["left_col"]]
+        right = df[rule["right_col"]]
+        op = rule.get("op", "*")
+        ops = {"*": left * right, "+": left + right, "-": left - right, "/": left / right}
+        df[new_col] = ops.get(op, left * right)
         return df
 
     if t == "summarize":
