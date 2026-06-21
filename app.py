@@ -366,11 +366,20 @@ elif page == "Merge":
         st.error(f"Missing columns: {missing}")
         st.stop()
 
+    # Detect new accounts in ETL not in Overview
+    import overview as overview_mod
+    existing_accounts = set(overview_mod.load_overview()["Account"])
+    etl_accounts = set(etl["Billing Company"].dropna().unique())
+    new_accounts = etl_accounts - existing_accounts
+    if new_accounts:
+        st.warning(f"**{len(new_accounts)} new account(s)** in ETL not in Overview: {', '.join(sorted(new_accounts)[:10])}{'...' if len(new_accounts) > 10 else ''}")
+
     tab1, tab2 = st.tabs(["Side-by-side Merge", "Updated Overview"])
 
     with tab1:
         merged = merge_overview_with_etl(etl)
-        st.caption(f"Rows: {len(merged)}")
+        new_count = merged["Qty_2023"].eq(0) & merged["Qty_2024"].eq(0) & merged["Qty_2025"].eq(0) & merged["ETL_Total"].gt(0)
+        st.caption(f"Rows: {len(merged)} ({new_count.sum()} new)")
         st.dataframe(merged, use_container_width=True, height=600)
 
         csv_bytes = merged.to_csv(index=False).encode()
@@ -380,7 +389,8 @@ elif page == "Merge":
 
     with tab2:
         updated = updated_overview_with_etl(etl)
-        st.caption(f"Rows: {len(updated)} — Qty_2026_2 and Qty_2026_ updated with ETL data")
+        new_count = updated["Qty_2023"].eq(0) & updated["Qty_2024"].eq(0) & updated["Qty_2025"].eq(0) & updated["Qty_2026_"].gt(0)
+        st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — Qty_2026_2 and Qty_2026_ updated with ETL data")
         st.dataframe(updated, use_container_width=True, height=600)
 
         csv_bytes = updated.to_csv(index=False).encode()

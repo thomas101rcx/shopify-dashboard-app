@@ -79,16 +79,45 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
 
     Returns merged DataFrame with:
       Overview columns + ETL biweekly columns + Variance
+
+    New accounts in ETL (not in Overview) are appended as rows with
+    Overview columns filled with 0/empty.
     """
     ov = load_overview()
     etl_agg = aggregate_etl_by_biweekly(etl)
 
-    merged = ov.merge(etl_agg, on="Account", how="left")
+    merged = ov.merge(etl_agg, on="Account", how="outer")
 
     # Fill NaN ETL columns with 0
     for col in ["ETL_0601-0607", "ETL_0608-0614", "ETL_0615-0621", "ETL_0622-0628", "ETL_Total"]:
         if col in merged.columns:
             merged[col] = merged[col].fillna(0).astype(int)
+
+    # Fill NaN Overview numeric columns with 0 (new ETL-only accounts)
+    for col in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_",
+                "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
+        if col in merged.columns:
+            merged[col] = merged[col].fillna(0).astype(int)
+
+    # Fill NaN text columns
+    for col in ["Account Label"]:
+        if col in merged.columns:
+            merged[col] = merged[col].fillna("")
+
+    # Recompute growth for rows that need it
+    def _growth(new, old):
+        if old == 0:
+            return None
+        return (new - old) / old
+
+    for col, new_col, old_col in [
+        ("23-24 Growth", "Qty_2024", "Qty_2023"),
+        ("24-25 Growth", "Qty_2025", "Qty_2024"),
+        ("25-26 Growth", "Qty_2026_", "Qty_2025"),
+    ]:
+        merged[col] = merged.apply(
+            lambda r: _growth(r[new_col], r[old_col]) if r[old_col] > 0 else None, axis=1
+        )
 
     # Variance: ETL_Total - Qty_2026_ (existing)
     merged["Variance"] = merged["ETL_Total"] - merged["Qty_2026_"]
@@ -101,6 +130,8 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
 
     Qty_2026_2 = existing Qty_2026_2 + ETL biweekly totals (0601-0618 falls in Q2).
     Qty_2026_ = Qty_2026_1 + Qty_2026_2 + Qty_2026_3 + Qty_2026_4.
+
+    New accounts in ETL (not in Overview) are appended with ETL qty as Qty_2026_2.
     """
     ov = load_overview()
     etl_agg = aggregate_etl_by_biweekly(etl)
@@ -108,14 +139,42 @@ def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
     # ETL 0601-0618 maps to Q2 (Qty_2026_2)
     etl_for_q2 = etl_agg[["Account", "ETL_Total"]].rename(columns={"ETL_Total": "ETL_Q2"})
 
-    updated = ov.merge(etl_for_q2, on="Account", how="left")
+    updated = ov.merge(etl_for_q2, on="Account", how="outer")
     updated["ETL_Q2"] = updated["ETL_Q2"].fillna(0).astype(int)
+
+    # Fill NaN Overview numeric columns with 0 (new ETL-only accounts)
+    for col in ["Qty_2023", "Qty_2024", "Qty_2025", "Qty_2026_",
+                "Qty_2026_1", "Qty_2026_2", "Qty_2026_3", "Qty_2026_4"]:
+        if col in updated.columns:
+            updated[col] = updated[col].fillna(0).astype(int)
+
+    # Fill NaN text columns
+    for col in ["Account Label"]:
+        if col in updated.columns:
+            updated[col] = updated[col].fillna("")
+
     updated["Qty_2026_2"] = updated["Qty_2026_2"] + updated["ETL_Q2"]
     updated["Qty_2026_"] = (
         updated["Qty_2026_1"] + updated["Qty_2026_2"]
         + updated["Qty_2026_3"] + updated["Qty_2026_4"]
     )
     updated = updated.drop(columns=["ETL_Q2"])
+
+    # Recompute growth for all rows
+    def _growth(new, old):
+        if old == 0:
+            return None
+        return (new - old) / old
+
+    updated["23-24 Growth"] = updated.apply(
+        lambda r: _growth(r["Qty_2024"], r["Qty_2023"]) if r["Qty_2023"] > 0 else None, axis=1
+    )
+    updated["24-25 Growth"] = updated.apply(
+        lambda r: _growth(r["Qty_2025"], r["Qty_2024"]) if r["Qty_2024"] > 0 else None, axis=1
+    )
+    updated["25-26 Growth"] = updated.apply(
+        lambda r: _growth(r["Qty_2026_"], r["Qty_2025"]) if r["Qty_2025"] > 0 else None, axis=1
+    )
 
     return updated
 
