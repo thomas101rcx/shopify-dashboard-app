@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working in this repository.
 
 ## Commands
 
@@ -25,13 +25,24 @@ Three-page Streamlit app: **ETL** → **Overview** → **Merge**.
 - User uploads their own `pivot_table.xlsx` (not bundled)
 - Reads all sheets: Overview, Lost Account, Count, 24Y 25N, Account Label Definitions, Duplicate Accounts
 - Computes formula cells (growth %, SUM) as numeric values at load time
+- Preserves text labels in growth columns (New_24, Lost, SOS, etc.)
+- Renders HTML table with color-coded badges for label types
 - `PIVOT_PATH` module-level var — Merge page overrides to point at user-uploaded file
 
 **Merge** (`merge.py`):
 - User uploads `pivot_table.xlsx` + ETL output
-- `merge_overview_with_etl()`: side-by-side view with ETL biweekly columns + Variance
-- `updated_overview_with_etl()`: Qty_2026_2 += ETL total, Qty_2026_ recomputed
-- `generate_updated_pivot_xlsx()`: full xlsx with updated Overview sheet, other sheets copied as-is
+- `aggregate_etl_by_quarter(etl)`: groups ETL by Billing Company + quarter from `Created at` month
+- `merge_overview_with_etl()`: side-by-side view with ETL_Q1..ETL_Q4 columns
+- `updated_overview_with_etl()`: ETL qty added to correct quarter, Qty_2026_ recomputed
+- Growth labels preserved via `_restore_original_growth()` — only 25-26 recomputed when ETL changes Q26 from 0→>0
+- `compute_count(updated)`: derives Count categories from updated Overview
+- `etl_date_label(etl)`: derives 'MMDD-MMDD' label from ETL min/max dates
+- `add_count_column(wb, label, updated)`: appends new column to Count sheet
+- `generate_updated_pivot_xlsx(etl, output_path)`: copies original xlsx, rebuilds Overview sheet (data + SUM/COUNTIF formulas), appends Count column, saves
+
+**Config** (`config.py`):
+- Single source of truth for all hardcoded values
+- Sheet names, column names, growth labels, color mappings, badge styles, quarter-to-column mapping, Excel engine priority
 
 ## Key Design Decisions
 
@@ -39,7 +50,11 @@ Three-page Streamlit app: **ETL** → **Overview** → **Merge**.
 - `fill_domain` has `free_domains` list — these use full email as group key (not domain).
 - `summarize` with `list` agg uses lambda (pandas doesn't support `"list"` string).
 - Overview sheet: row 1 = date, row 2 = headers, row 3+ = data, last rows = SUM/COUNTIF formulas.
-- ETL biweekly data (0601-0618) maps to Qty_2026_2 (Q2 column) in the Overview.
+- ETL quarter mapping: month → Qty_2026_1..4, then Qty_2026_ = SUM(Q1..Q4).
+- Growth labels: preserve original text labels, only recompute 25-26 when ETL changes Qty_2026_ from 0→>0.
+- SOS labels: not auto-assigned (manually set via red font color `FFFF0000`), preserved from original.
+- Count tab: categories derived from Overview data, new column appended per merge (never overwritten).
+- All config constants in `cfg.*` — no hardcoded strings in business logic.
 
 ## Gotchas
 
@@ -49,3 +64,6 @@ Three-page Streamlit app: **ETL** → **Overview** → **Merge**.
 - Non-standard xlsx (conformance="strict", missing sheet ids) requires calamine engine.
 - Growth columns in Lost Account sheet have mixed types (floats + strings like "SOS", "Lost", "New_24") — format only numeric values as %.
 - Count sheet: row labels in col A, not in header. Lost row = red bg, New_26 row = yellow bg (label cell only, not entire row).
+- Overview may have duplicate account names — `drop_duplicates(subset=cfg.COL_ACCOUNT, keep="first")` before `set_index()`.
+- `load_overview_styled()` takes a workbook object (not path) — call `load_workbook()` first.
+- Sheet names have trailing spaces: `"Lost Account "`, `"Account Label Definition "`, `"Dupilicate Accounts "`.

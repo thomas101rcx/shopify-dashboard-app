@@ -353,7 +353,7 @@ elif page == "Overview":
                     continue
                 rows.append(row_vals)
             if rows:
-                df = pd.DataFrame(rows, columns=["Label", "W1", "W2", "W3", "W4", "W5", "W6"])
+                df = pd.DataFrame(rows, columns=cfg.COUNT_COL_LABELS[: len(rows[0])])
                 st.dataframe(df, use_container_width=True)
         except Exception as e:
             st.error(f"Failed to load Count: {e}")
@@ -368,7 +368,7 @@ elif page == "Overview":
                     continue
                 rows.append(row_vals)
             if rows:
-                df = pd.DataFrame(rows, columns=["Company", "2024", "2025", "2026", "2025 Carecraft", "email sent", "Date"])
+                df = pd.DataFrame(rows, columns=[cfg.COL_24Y_25N_COMPANY, cfg.COL_24Y_25N_2024, cfg.COL_24Y_25N_2025, cfg.COL_24Y_25N_2026, cfg.COL_24Y_25N_CARECRAFT, cfg.COL_24Y_25N_EMAIL_SENT, cfg.COL_24Y_25N_DATE])
                 st.dataframe(df, use_container_width=True, height=400)
         except Exception as e:
             st.error(f"Failed to load 24Y/25N: {e}")
@@ -383,8 +383,8 @@ elif page == "Overview":
                     continue
                 rows.append(row_vals)
             if rows:
-                df = pd.DataFrame(rows, columns=["idx", "Label", "Definition", "Note"])
-                df = df.drop(columns=["idx"], errors="ignore")
+                df = pd.DataFrame(rows, columns=[cfg.COL_LABEL_DEF_IDX, cfg.COL_LABEL_DEF_LABEL, cfg.COL_LABEL_DEF_DEFINITION, cfg.COL_LABEL_DEF_NOTE])
+                df = df.drop(columns=[cfg.COL_LABEL_DEF_IDX], errors="ignore")
                 st.dataframe(df, use_container_width=True, hide_index=True)
         except Exception as e:
             st.error(f"Failed to load Labels: {e}")
@@ -399,7 +399,7 @@ elif page == "Overview":
                     continue
                 rows.append(row_vals)
             if rows:
-                df = pd.DataFrame(rows, columns=["Account", "Note"])
+                df = pd.DataFrame(rows, columns=[cfg.COL_DUPLICATES_ACCOUNT, cfg.COL_DUPLICATES_NOTE])
                 st.dataframe(df, use_container_width=True, hide_index=True)
         except Exception as e:
             st.error(f"Failed to load Duplicates: {e}")
@@ -481,10 +481,25 @@ elif page == "Merge":
 
     from merge import compute_count, etl_date_label
 
+    # Compute once — reused across tabs (deterministic for same ETL input)
+    @st.cache_data
+    def _compute_merged(etl_json: str):
+        import json
+        etl = pd.read_json(etl_json)
+        return merge_overview_with_etl(etl).to_json()
+
+    @st.cache_data
+    def _compute_updated(etl_json: str):
+        import json
+        etl = pd.read_json(etl_json)
+        return updated_overview_with_etl(etl).to_json()
+
+    etl_json = etl.to_json()
+
     tab1, tab2, tab3 = st.tabs(["Side-by-side Merge", "Updated Overview", "Updated Count"])
 
     with tab1:
-        merged = merge_overview_with_etl(etl)
+        merged = pd.read_json(_compute_merged(etl_json))
         new_count = merged[cfg.COL_QTY_2023].eq(0) & merged[cfg.COL_QTY_2024].eq(0) & merged[cfg.COL_QTY_2025].eq(0) & merged["ETL_Total"].gt(0)
         # Build dynamic ETL column list for display
         etl_cols = [c for c in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"] if c in merged.columns]
@@ -498,7 +513,7 @@ elif page == "Merge":
         )
 
     with tab2:
-        updated = updated_overview_with_etl(etl)
+        updated = pd.read_json(_compute_updated(etl_json))
         new_count = updated[cfg.COL_QTY_2023].eq(0) & updated[cfg.COL_QTY_2024].eq(0) & updated[cfg.COL_QTY_2025].eq(0) & updated[cfg.COL_QTY_2026_TOTAL].gt(0)
         st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — ETL qty added to correct quarter, Qty_2026_ recomputed")
         st.dataframe(updated, use_container_width=True, height=600)
@@ -528,7 +543,7 @@ elif page == "Merge":
                 st.error(f"Failed to generate: {e}")
 
     with tab3:
-        updated = updated_overview_with_etl(etl)
+        updated = pd.read_json(_compute_updated(etl_json))
         counts = compute_count(updated)
         label = etl_date_label(etl)
 

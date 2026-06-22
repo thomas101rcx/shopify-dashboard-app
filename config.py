@@ -98,5 +98,26 @@ COUNT_ROW_LABELS = [
     "Already Purchased 2026",
 ]
 
+COUNT_COL_LABELS = ["Label", "W1", "W2", "W3", "W4", "W5", "W6"]
+
+# ── 24Y 25N Tab ───────────────────────────────────────────────
+COL_24Y_25N_COMPANY = "Company"
+COL_24Y_25N_2024 = 2024
+COL_24Y_25N_2025 = 2025
+COL_24Y_25N_2026 = 2026
+COL_24Y_25N_CARECRAFT = "2025 Carecraft"
+COL_24Y_25N_EMAIL_SENT = "email sent"
+COL_24Y_25N_DATE = "Date"
+
+# ── Label Definition Tab ───────────────────────────────────────
+COL_LABEL_DEF_IDX = "idx"
+COL_LABEL_DEF_LABEL = "Label"
+COL_LABEL_DEF_DEFINITION = "Definition"
+COL_LABEL_DEF_NOTE = "Note"
+
+# ── Duplicates Tab ─────────────────────────────────────────────
+COL_DUPLICATES_ACCOUNT = "Account"
+COL_DUPLICATES_NOTE = "Note"
+
 # ── Excel Engine Priority ────────────────────────────────────
 EXCEL_ENGINES = ["calamine", "openpyxl", None]

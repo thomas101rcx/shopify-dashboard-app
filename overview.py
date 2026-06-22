@@ -178,7 +178,7 @@ def load_lost_accounts() -> pd.DataFrame:
 def load_count() -> pd.DataFrame:
     df = _load_raw_sheet(cfg.SHEET_COUNT)
     data = df.iloc[1:].copy()
-    data.columns = ["Label", "0413-0419", "0420-0426", "0427-0503", "0504-0510", "0511-0517", "0518-0531"]
+    data.columns = cfg.COUNT_COL_LABELS[: len(data.columns)]
     data = data.dropna(how="all").reset_index(drop=True)
     for c in data.columns[1:]:
         data[c] = pd.to_numeric(data[c], errors="coerce").fillna(0).astype(int)
@@ -188,26 +188,34 @@ def load_count() -> pd.DataFrame:
 def load_account_labels() -> pd.DataFrame:
     df = _load_raw_sheet(cfg.SHEET_LABEL_DEFINITION)
     data = df.iloc[2:].copy()
-    data.columns = ["idx", "Label", "Definition", "Note"]
-    data = data.dropna(subset=["Label"]).reset_index(drop=True)
-    return data[["Label", "Definition", "Note"]]
+    data.columns = [cfg.COL_LABEL_DEF_IDX, cfg.COL_LABEL_DEF_LABEL, cfg.COL_LABEL_DEF_DEFINITION, cfg.COL_LABEL_DEF_NOTE]
+    data = data.dropna(subset=[cfg.COL_LABEL_DEF_LABEL]).reset_index(drop=True)
+    return data[[cfg.COL_LABEL_DEF_LABEL, cfg.COL_LABEL_DEF_DEFINITION, cfg.COL_LABEL_DEF_NOTE]]
 
 
 def load_24y_25n() -> pd.DataFrame:
     df = _load_raw_sheet(cfg.SHEET_24Y_25N)
     data = df.iloc[1:].copy()
     data.columns = range(7)
-    data = data.rename(columns={0: "Company", 1: 2024, 2: 2025, 3: 2026, 4: "2025 Carecraft", 5: "email sent", 6: "Date"})
+    data = data.rename(columns={
+        0: cfg.COL_24Y_25N_COMPANY,
+        1: cfg.COL_24Y_25N_2024,
+        2: cfg.COL_24Y_25N_2025,
+        3: cfg.COL_24Y_25N_2026,
+        4: cfg.COL_24Y_25N_CARECRAFT,
+        5: cfg.COL_24Y_25N_EMAIL_SENT,
+        6: cfg.COL_24Y_25N_DATE,
+    })
     data = data.dropna(how="all").reset_index(drop=True)
-    data = _coerce_numeric(data, [2024, 2025, 2026])
-    if "Date" in data.columns:
-        data["Date"] = pd.to_datetime(data["Date"], errors="coerce")
+    data = _coerce_numeric(data, [cfg.COL_24Y_25N_2024, cfg.COL_24Y_25N_2025, cfg.COL_24Y_25N_2026])
+    if cfg.COL_24Y_25N_DATE in data.columns:
+        data[cfg.COL_24Y_25N_DATE] = pd.to_datetime(data[cfg.COL_24Y_25N_DATE], errors="coerce")
     return data
 
 
 def load_duplicates() -> pd.DataFrame:
     df = _load_raw_sheet(cfg.SHEET_DUPLICATES)
     data = df.copy()
-    data.columns = ["Account", "Note"]
-    data = data.dropna(subset=["Account"]).reset_index(drop=True)
+    data.columns = [cfg.COL_DUPLICATES_ACCOUNT, cfg.COL_DUPLICATES_NOTE]
+    data = data.dropna(subset=[cfg.COL_DUPLICATES_ACCOUNT]).reset_index(drop=True)
     return data
