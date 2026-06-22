@@ -24,7 +24,7 @@ from transform import apply_rules
 st.set_page_config(page_title="Shopify Dashboard", layout="wide")
 st.title("Shopify Dashboard")
 
-page = st.sidebar.radio("Page", ["Data Prep", "Overview", "Merge"], index=0)
+page = st.sidebar.radio("Page", ["Data Prep", "Merge", "Overview"], index=0)
 
 
 def _read_excel(path: str, sheet: str | None = None) -> pd.DataFrame:
