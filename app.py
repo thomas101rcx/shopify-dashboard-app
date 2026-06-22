@@ -484,14 +484,14 @@ elif page == "Merge":
     # Compute once — reused across tabs (deterministic for same Data Prep input)
     @st.cache_data
     def _compute_merged(etl_json: str):
-        import json
-        etl = pd.read_json(etl_json)
+        import io
+        etl = pd.read_json(io.StringIO(etl_json))
         return merge_overview_with_etl(etl).to_json()
 
     @st.cache_data
     def _compute_updated(etl_json: str):
-        import json
-        etl = pd.read_json(etl_json)
+        import io
+        etl = pd.read_json(io.StringIO(etl_json))
         return updated_overview_with_etl(etl).to_json()
 
     etl_json = etl.to_json()
@@ -499,7 +499,7 @@ elif page == "Merge":
     tab1, tab2, tab3 = st.tabs(["Side-by-side Merge", "Updated Overview", "Updated Count"])
 
     with tab1:
-        merged = pd.read_json(_compute_merged(etl_json))
+        merged = pd.read_json(io.StringIO(_compute_merged(etl_json)))
         new_count = merged[cfg.COL_QTY_2023].eq(0) & merged[cfg.COL_QTY_2024].eq(0) & merged[cfg.COL_QTY_2025].eq(0) & merged["ETL_Total"].gt(0)
         # Build dynamic Data Prep column list for display
         etl_cols = [c for c in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"] if c in merged.columns]
@@ -513,7 +513,7 @@ elif page == "Merge":
         )
 
     with tab2:
-        updated = pd.read_json(_compute_updated(etl_json))
+        updated = pd.read_json(io.StringIO(_compute_updated(etl_json)))
         new_count = updated[cfg.COL_QTY_2023].eq(0) & updated[cfg.COL_QTY_2024].eq(0) & updated[cfg.COL_QTY_2025].eq(0) & updated[cfg.COL_QTY_2026_TOTAL].gt(0)
         st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — Data Prep qty added to correct quarter, Qty_2026_ recomputed")
         st.dataframe(updated, use_container_width=True, height=600)
@@ -543,7 +543,7 @@ elif page == "Merge":
                 st.error(f"Failed to generate: {e}")
 
     with tab3:
-        updated = pd.read_json(_compute_updated(etl_json))
+        updated = pd.read_json(io.StringIO(_compute_updated(etl_json)))
         counts = compute_count(updated)
         label = etl_date_label(etl)
 
