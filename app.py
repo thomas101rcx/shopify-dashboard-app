@@ -346,14 +346,17 @@ elif page == "Overview":
     with tab_count:
         try:
             ws = wb[cfg.SHEET_COUNT]
+            # Row 1 = headers (Label, date columns), row 2+ = data
+            ncols = ws.max_column
+            headers = [ws.cell(row=1, column=c).value for c in range(1, ncols + 1)]
             rows = []
             for r in range(2, ws.max_row + 1):
-                row_vals = [ws.cell(row=r, column=c).value for c in range(1, 8)]
+                row_vals = [ws.cell(row=r, column=c).value for c in range(1, ncols + 1)]
                 if all(v is None for v in row_vals):
                     continue
                 rows.append(row_vals)
             if rows:
-                df = pd.DataFrame(rows, columns=cfg.COUNT_COL_LABELS[: len(rows[0])])
+                df = pd.DataFrame(rows, columns=headers)
                 st.dataframe(df, use_container_width=True)
         except Exception as e:
             st.error(f"Failed to load Count: {e}")
