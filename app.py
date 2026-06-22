@@ -339,7 +339,7 @@ elif page == "Overview":
                 rows.append(row_vals)
             if rows:
                 df = pd.DataFrame(rows, columns=cfg.OVERVIEW_COLS)
-                df = df.fillna("")
+                df = df.where(pd.notnull(df), other="")
                 st.dataframe(df, use_container_width=True, height=400)
         except Exception as e:
             st.error(f"Failed to load Lost Account: {e}")
@@ -349,7 +349,11 @@ elif page == "Overview":
             ws = wb[cfg.SHEET_COUNT]
             # Row 1 = headers (Label, date columns), row 2+ = data
             ncols = ws.max_column
-            headers = [ws.cell(row=1, column=c).value for c in range(1, ncols + 1)]
+            headers = [ws.cell(row=1, column=c).value or "" for c in range(1, ncols + 1)]
+            # Remove trailing empty columns
+            while headers and headers[-1] == "":
+                headers.pop()
+            ncols = len(headers)
             rows = []
             for r in range(2, ws.max_row + 1):
                 row_vals = [ws.cell(row=r, column=c).value for c in range(1, ncols + 1)]
@@ -358,7 +362,7 @@ elif page == "Overview":
                 rows.append(row_vals)
             if rows:
                 df = pd.DataFrame(rows, columns=headers)
-                df = df.fillna(0)
+                df = df.where(pd.notnull(df), other=0)
                 for c in df.columns[1:]:
                     df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype(int)
                 st.dataframe(df, use_container_width=True)
@@ -376,7 +380,7 @@ elif page == "Overview":
                 rows.append(row_vals)
             if rows:
                 df = pd.DataFrame(rows, columns=[cfg.COL_24Y_25N_COMPANY, cfg.COL_24Y_25N_2024, cfg.COL_24Y_25N_2025, cfg.COL_24Y_25N_2026, cfg.COL_24Y_25N_CARECRAFT, cfg.COL_24Y_25N_EMAIL_SENT, cfg.COL_24Y_25N_DATE])
-                df = df.fillna("")
+                df = df.where(pd.notnull(df), other="")
                 st.dataframe(df, use_container_width=True, height=400)
         except Exception as e:
             st.error(f"Failed to load 24Y/25N: {e}")
@@ -393,7 +397,7 @@ elif page == "Overview":
             if rows:
                 df = pd.DataFrame(rows, columns=[cfg.COL_LABEL_DEF_IDX, cfg.COL_LABEL_DEF_LABEL, cfg.COL_LABEL_DEF_DEFINITION, cfg.COL_LABEL_DEF_NOTE])
                 df = df.drop(columns=[cfg.COL_LABEL_DEF_IDX], errors="ignore")
-                df = df.fillna("")
+                df = df.where(pd.notnull(df), other="")
                 st.dataframe(df, use_container_width=True, hide_index=True)
         except Exception as e:
             st.error(f"Failed to load Labels: {e}")
@@ -409,7 +413,7 @@ elif page == "Overview":
                 rows.append(row_vals)
             if rows:
                 df = pd.DataFrame(rows, columns=[cfg.COL_DUPLICATES_ACCOUNT, cfg.COL_DUPLICATES_NOTE])
-                df = df.fillna("")
+                df = df.where(pd.notnull(df), other="")
                 st.dataframe(df, use_container_width=True, hide_index=True)
         except Exception as e:
             st.error(f"Failed to load Duplicates: {e}")
@@ -516,7 +520,7 @@ elif page == "Merge":
         etl_cols = [c for c in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"] if c in merged.columns]
         overview_cols = [c for c in merged.columns if c not in etl_cols]
         st.caption(f"Rows: {len(merged)} ({new_count.sum()} new) — Data Prep columns: {', '.join(etl_cols)}")
-        st.dataframe(merged.fillna(""), use_container_width=True, height=600)
+        st.dataframe(merged.where(pd.notnull(merged), other=""), use_container_width=True, height=600)
 
         csv_bytes = merged.to_csv(index=False).encode()
         st.download_button(
@@ -527,7 +531,7 @@ elif page == "Merge":
         updated = pd.read_json(io.StringIO(_compute_updated(etl_json)), orient="table")
         new_count = updated[cfg.COL_QTY_2023].eq(0) & updated[cfg.COL_QTY_2024].eq(0) & updated[cfg.COL_QTY_2025].eq(0) & updated[cfg.COL_QTY_2026_TOTAL].gt(0)
         st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — Data Prep qty added to correct quarter, Qty_2026_ recomputed")
-        st.dataframe(updated.fillna(""), use_container_width=True, height=600)
+        st.dataframe(updated.where(pd.notnull(updated), other=""), use_container_width=True, height=600)
 
         csv_bytes = updated.to_csv(index=False).encode()
         st.download_button(
