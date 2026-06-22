@@ -1,4 +1,4 @@
-"""Shopify Dashboard — ETL + Overview."""
+"""Shopify Dashboard — Data Prep + Overview."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from transform import apply_rules
 st.set_page_config(page_title="Shopify Dashboard", layout="wide")
 st.title("Shopify Dashboard")
 
-page = st.sidebar.radio("Page", ["ETL", "Overview", "Merge"], index=0)
+page = st.sidebar.radio("Page", ["Data Prep", "Overview", "Merge"], index=0)
 
 
 def _read_excel(path: str, sheet: str | None = None) -> pd.DataFrame:
@@ -57,7 +57,7 @@ def _list_sheets(path: str) -> list[str]:
         return []
 
 
-if page == "ETL":
+if page == "Data Prep":
     rules_file = st.sidebar.file_uploader(
         "Rules file (yaml / json / py)", type=["yaml", "yml", "json", "py"]
     )
@@ -133,7 +133,7 @@ if page == "ETL":
                 )
                 if c3.button("Send to Merge", key=f"send_{f.file_id}"):
                     st.session_state["etl_result"] = result
-                    st.success("Sent to Merge tab — switch to Merge tab to view")
+                    st.success("Sent to Merge page — switch to Merge tab to view")
             st.divider()
     else:
         st.info("Upload one or more CSV/XLSX files to begin.")
@@ -405,10 +405,10 @@ elif page == "Overview":
             st.error(f"Failed to load Duplicates: {e}")
 
 elif page == "Merge":
-    st.subheader("Merge ETL → Overview")
+    st.subheader("Merge Data Prep → Overview")
     st.markdown(
-        "Upload your current `pivot_table.xlsx` + ETL output (CSV/XLSX) to merge. "
-        "ETL quantities are added to the correct quarter column based on order date "
+        "Upload your current `pivot_table.xlsx` + Data Prep output (CSV/XLSX) to merge. "
+        "Quantities are added to the correct quarter column based on order date "
         "(Jan-Mar → Q1, Apr-Jun → Q2, Jul-Sep → Q3, Oct-Dec → Q4)."
     )
 
@@ -430,15 +430,15 @@ elif page == "Merge":
     overview_mod.PIVOT_PATH = str(pivot_tmp)
 
     if "etl_result" in st.session_state:
-        st.info("Using ETL result from current session (sent from ETL tab).")
+        st.info("Using Data Prep result from current session (sent from Data Prep page).")
         etl = st.session_state["etl_result"]
-        st.caption(f"ETL rows: {len(etl)}")
+        st.caption(f"Data Prep rows: {len(etl)}")
     else:
         merge_file = st.file_uploader(
-            "ETL output file (csv / xlsx)", type=["csv", "xlsx"], key="merge_etl"
+            "Data Prep output file (csv / xlsx)", type=["csv", "xlsx"], key="merge_etl"
         )
         if merge_file is None:
-            st.info("Send data from ETL tab via 'Send to Merge' button, or upload a file here.")
+            st.info("Send data from Data Prep page via 'Send to Merge' button, or upload a file here.")
             st.stop()
 
         suffix = Path(merge_file.name).suffix.lower()
@@ -457,7 +457,7 @@ elif page == "Merge":
             st.error(f"Failed to read file: {e}")
             st.stop()
 
-    # ETL output may have renamed columns (e.g. "Sum of Lineitem quantity")
+    # Data Prep output may have renamed columns (e.g. "Sum of Lineitem quantity")
     if "Sum of Lineitem quantity" in etl.columns:
         qty_col = "Sum of Lineitem quantity"
     elif "Lineitem quantity" in etl.columns:
@@ -471,17 +471,17 @@ elif page == "Merge":
         st.error(f"Missing columns: {missing}")
         st.stop()
 
-    # Detect new accounts in ETL not in Overview
+    # Detect new accounts in Data Prep output not in Overview
     import overview as overview_mod
     existing_accounts = set(overview_mod.load_overview()["Account"])
     etl_accounts = set(etl["Billing Company"].dropna().unique())
     new_accounts = etl_accounts - existing_accounts
     if new_accounts:
-        st.warning(f"**{len(new_accounts)} new account(s)** in ETL not in Overview: {', '.join(sorted(new_accounts)[:10])}{'...' if len(new_accounts) > 10 else ''}")
+        st.warning(f"**{len(new_accounts)} new account(s)** in Data Prep output not in Overview: {', '.join(sorted(new_accounts)[:10])}{'...' if len(new_accounts) > 10 else ''}")
 
     from merge import compute_count, etl_date_label
 
-    # Compute once — reused across tabs (deterministic for same ETL input)
+    # Compute once — reused across tabs (deterministic for same Data Prep input)
     @st.cache_data
     def _compute_merged(etl_json: str):
         import json
@@ -501,10 +501,10 @@ elif page == "Merge":
     with tab1:
         merged = pd.read_json(_compute_merged(etl_json))
         new_count = merged[cfg.COL_QTY_2023].eq(0) & merged[cfg.COL_QTY_2024].eq(0) & merged[cfg.COL_QTY_2025].eq(0) & merged["ETL_Total"].gt(0)
-        # Build dynamic ETL column list for display
+        # Build dynamic Data Prep column list for display
         etl_cols = [c for c in ["ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"] if c in merged.columns]
         overview_cols = [c for c in merged.columns if c not in etl_cols]
-        st.caption(f"Rows: {len(merged)} ({new_count.sum()} new) — ETL columns: {', '.join(etl_cols)}")
+        st.caption(f"Rows: {len(merged)} ({new_count.sum()} new) — Data Prep columns: {', '.join(etl_cols)}")
         st.dataframe(merged, use_container_width=True, height=600)
 
         csv_bytes = merged.to_csv(index=False).encode()
@@ -515,7 +515,7 @@ elif page == "Merge":
     with tab2:
         updated = pd.read_json(_compute_updated(etl_json))
         new_count = updated[cfg.COL_QTY_2023].eq(0) & updated[cfg.COL_QTY_2024].eq(0) & updated[cfg.COL_QTY_2025].eq(0) & updated[cfg.COL_QTY_2026_TOTAL].gt(0)
-        st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — ETL qty added to correct quarter, Qty_2026_ recomputed")
+        st.caption(f"Rows: {len(updated)} ({new_count.sum()} new) — Data Prep qty added to correct quarter, Qty_2026_ recomputed")
         st.dataframe(updated, use_container_width=True, height=600)
 
         csv_bytes = updated.to_csv(index=False).encode()

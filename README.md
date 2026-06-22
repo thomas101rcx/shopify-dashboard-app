@@ -1,6 +1,6 @@
 # Shopify Dashboard
 
-Streamlit app for Shopify sales ETL + account overview dashboard. Upload CSV/XLSX sales data, transform via rules, merge into pivot-table-style overview, download updated workbook.
+Streamlit app for Shopify sales data prep + account overview dashboard. Upload CSV/XLSX sales data, transform via rules, merge into pivot-table-style overview, download updated workbook.
 
 ## Setup
 
@@ -16,7 +16,7 @@ uv run streamlit run app.py --server.port 8501
 
 ## Pages
 
-### ETL
+### Data Prep
 - Upload rules file (YAML/JSON/Python) + data files (CSV/XLSX)
 - View raw data and transformed result
 - Download result as CSV/XLSX
@@ -30,9 +30,9 @@ uv run streamlit run app.py --server.port 8501
 - Label definitions shown in expander
 
 ### Merge
-- Upload your `pivot_table.xlsx` + ETL output (or use "Send to Merge" from ETL tab)
-- **Side-by-side Merge**: Overview columns + ETL quarterly columns (ETL_Q1..ETL_Q4) + ETL_Total
-- **Updated Overview**: ETL qty added to correct quarter column (by order date), Qty_2026_ recomputed, growth labels preserved
+- Upload your `pivot_table.xlsx` + Data Prep output (or use "Send to Merge" from Data Prep page)
+- **Side-by-side Merge**: Overview columns + Data Prep quarterly columns (ETL_Q1..ETL_Q4) + ETL_Total
+- **Updated Overview**: Data Prep qty added to correct quarter column (by order date), Qty_2026_ recomputed, growth labels preserved
 - **Updated Count**: New counts computed from updated Overview, delta vs previous Count column shown
 - **Generate Updated Pivot XLSX**: downloads full workbook with:
   - Overview sheet rebuilt (merged data, SUM/COUNTIF formulas, preserved growth labels)
@@ -42,7 +42,7 @@ uv run streamlit run app.py --server.port 8501
 ## Merge Logic
 
 ### Quarter Mapping
-ETL orders are grouped by `Created at` month:
+Data Prep orders are grouped by `Created at` month:
 - Jan-Mar → Qty_2026_1 (Q1)
 - Apr-Jun → Qty_2026_2 (Q2)
 - Jul-Sep → Qty_2026_3 (Q3)
@@ -51,13 +51,13 @@ ETL orders are grouped by `Created at` month:
 Qty_2026_ = sum of all quarter columns (recomputed after merge).
 
 ### Growth Labels
-Labels preserved from original xlsx. Only recomputed when ETL changes Qty_2026_ from 0 → >0:
+Labels preserved from original xlsx. Only recomputed when Data Prep changes Qty_2026_ from 0 → >0:
 - **New_26**: old Qty_2026_ = 0, new > 0, no prior history (2023-2025 all 0)
 - **Reactivated**: old Qty_2026_ = 0, new > 0, has prior history
 - **Lost**: Qty_2026_ = 0, has prior history (preserved from original)
 - **SOS**: preserved from original (manually assigned, not auto-computed)
 - **"/"**: Qty_2026_ = 0, no prior history (preserved from original)
-- **23-24 Growth, 24-25 Growth**: always preserved (ETL doesn't affect past years)
+- **23-24 Growth, 24-25 Growth**: always preserved (Data Prep doesn't affect past years)
 
 ### Count Tab
 Categories derived from updated Overview:
@@ -67,7 +67,7 @@ Categories derived from updated Overview:
 - No Purchase 2026 / Not Lost
 - Already Purchased 2026
 
-New column appended each time (label = ETL date range, e.g. `0601-0618`).
+New column appended each time (label = Data Prep date range, e.g. `0601-0618`).
 
 ## Rules
 
@@ -91,12 +91,12 @@ See `rules_example.yaml` and `rules_shopify.yaml`.
 
 ## Project Structure
 
-- `app.py` — Streamlit entry, three pages (ETL, Overview, Merge)
+- `app.py` — Streamlit entry, three pages (Data Prep, Overview, Merge)
 - `config.py` — All configuration constants (sheet names, column names, colors, labels, etc.)
 - `transform.py` — Rule engine
 - `rules.py` — Rules file loader (YAML/JSON/Python)
 - `filters.py` — Custom filter functions
 - `overview.py` — Load and parse pivot_table.xlsx sheets
-- `merge.py` — Merge ETL data into Overview, generate updated xlsx
+- `merge.py` — Merge Data Prep output into Overview, generate updated xlsx
 - `rules_example.yaml` — Example rules
 - `rules_shopify.yaml` — Shopify-specific rules

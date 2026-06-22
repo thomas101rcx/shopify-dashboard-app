@@ -12,9 +12,9 @@ uv run python -c "..."               # run Python snippet
 
 ## Architecture
 
-Three-page Streamlit app: **ETL** → **Overview** → **Merge**.
+Three-page Streamlit app: **Data Prep** → **Overview** → **Merge**.
 
-**ETL** (`app.py` + `transform.py` + `rules.py` + `filters.py`):
+**Data Prep** (`app.py` + `transform.py` + `rules.py` + `filters.py`):
 - Upload CSV/XLSX + rules file → transform → view/download result
 - Rules applied sequentially, each `df → df`
 - `custom_filter` rule type loads Python function via `_load_func()`
@@ -30,13 +30,13 @@ Three-page Streamlit app: **ETL** → **Overview** → **Merge**.
 - `PIVOT_PATH` module-level var — Merge page overrides to point at user-uploaded file
 
 **Merge** (`merge.py`):
-- User uploads `pivot_table.xlsx` + ETL output
-- `aggregate_etl_by_quarter(etl)`: groups ETL by Billing Company + quarter from `Created at` month
+- User uploads `pivot_table.xlsx` + Data Prep output
+- `aggregate_etl_by_quarter(etl)`: groups Data Prep output by Billing Company + quarter from `Created at` month
 - `merge_overview_with_etl()`: side-by-side view with ETL_Q1..ETL_Q4 columns
-- `updated_overview_with_etl()`: ETL qty added to correct quarter, Qty_2026_ recomputed
-- Growth labels preserved via `_restore_original_growth()` — only 25-26 recomputed when ETL changes Q26 from 0→>0
+- `updated_overview_with_etl()`: Data Prep qty added to correct quarter, Qty_2026_ recomputed
+- Growth labels preserved via `_restore_original_growth()` — only 25-26 recomputed when Data Prep changes Q26 from 0→>0
 - `compute_count(updated)`: derives Count categories from updated Overview
-- `etl_date_label(etl)`: derives 'MMDD-MMDD' label from ETL min/max dates
+- `etl_date_label(etl)`: derives 'MMDD-MMDD' label from Data Prep min/max dates
 - `add_count_column(wb, label, updated)`: appends new column to Count sheet
 - `generate_updated_pivot_xlsx(etl, output_path)`: copies original xlsx, rebuilds Overview sheet (data + SUM/COUNTIF formulas), appends Count column, saves
 
@@ -50,8 +50,8 @@ Three-page Streamlit app: **ETL** → **Overview** → **Merge**.
 - `fill_domain` has `free_domains` list — these use full email as group key (not domain).
 - `summarize` with `list` agg uses lambda (pandas doesn't support `"list"` string).
 - Overview sheet: row 1 = date, row 2 = headers, row 3+ = data, last rows = SUM/COUNTIF formulas.
-- ETL quarter mapping: month → Qty_2026_1..4, then Qty_2026_ = SUM(Q1..Q4).
-- Growth labels: preserve original text labels, only recompute 25-26 when ETL changes Qty_2026_ from 0→>0.
+- Data Prep quarter mapping: month → Qty_2026_1..4, then Qty_2026_ = SUM(Q1..Q4).
+- Growth labels: preserve original text labels, only recompute 25-26 when Data Prep changes Qty_2026_ from 0→>0.
 - SOS labels: not auto-assigned (manually set via red font color `FFFF0000`), preserved from original.
 - Count tab: categories derived from Overview data, new column appended per merge (never overwritten).
 - All config constants in `cfg.*` — no hardcoded strings in business logic.

@@ -1,4 +1,4 @@
-"""Custom filter functions for Shopify ETL rules."""
+"""Custom filter functions for Shopify Data Prep rules."""
 
 from __future__ import annotations
 

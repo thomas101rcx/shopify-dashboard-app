@@ -1,4 +1,4 @@
-"""Merge ETL output into Overview dashboard."""
+"""Merge Data Prep output into Overview dashboard."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _restore_original_growth(merged: pd.DataFrame, original: pd.DataFrame) -> pd
 
     For accounts that existed in the Overview, preserve their original text labels
     (New_24, New_25, New_26, Lost, SOS, Reactivated, /) and only recompute
-    25-26 Growth when ETL changed Qty_2026_ from 0 to >0.
+    25-26 Growth when Data Prep changed Qty_2026_ from 0 to >0.
     """
     # Build lookup of original growth labels by account (use first if duplicates)
     orig_labels = original.drop_duplicates(subset=cfg.COL_ACCOUNT, keep="first").set_index(cfg.COL_ACCOUNT)[cfg.GROWTH_COLS].to_dict("index")
@@ -56,11 +56,11 @@ def _restore_original_growth(merged: pd.DataFrame, original: pd.DataFrame) -> pd
 
         orig = orig_labels[acct]
 
-        # 23-24 and 24-25 Growth: always preserve (ETL doesn't affect past years)
+        # 23-24 and 24-25 Growth: always preserve (Data Prep doesn't affect past years)
         merged.at[i, cfg.COL_GROWTH_23_24] = orig[cfg.COL_GROWTH_23_24]
         merged.at[i, cfg.COL_GROWTH_24_25] = orig[cfg.COL_GROWTH_24_25]
 
-        # 25-26 Growth: preserve unless ETL changed Qty_2026_ from 0 to >0
+        # 25-26 Growth: preserve unless Data Prep changed Qty_2026_ from 0 to >0
         orig_25_26 = orig[cfg.COL_GROWTH_25_26]
         orig_q26 = row.get("_orig_Qty_2026_", row[cfg.COL_QTY_2026_TOTAL])
         new_q26 = row[cfg.COL_QTY_2026_TOTAL]
@@ -78,7 +78,7 @@ def _restore_original_growth(merged: pd.DataFrame, original: pd.DataFrame) -> pd
 
 
 def _assign_all_growth_for_new_account(merged: pd.DataFrame, i, row) -> None:
-    """Assign growth labels for a new ETL-only account (not in original Overview)."""
+    """Assign growth labels for a new Data Prep-only account (not in original Overview)."""
     q23 = int(row[cfg.COL_QTY_2023])
     q24 = int(row[cfg.COL_QTY_2024])
     q25 = int(row[cfg.COL_QTY_2025])
@@ -100,11 +100,11 @@ def _quarter_col(month: int) -> str:
 
 
 def aggregate_etl_by_quarter(etl: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate ETL result by Billing Company + quarter.
+    """Aggregate Data Prep result by Billing Company + quarter.
 
     Returns DataFrame with columns:
       Account, ETL_Q1, ETL_Q2, ETL_Q3, ETL_Q4, ETL_Total
-    Only quarters present in the ETL data will have non-zero values.
+    Only quarters present in the Data Prep data will have non-zero values.
     """
     if etl.empty:
         return pd.DataFrame(columns=["Account", "ETL_Q1", "ETL_Q2", "ETL_Q3", "ETL_Q4", "ETL_Total"])
@@ -133,12 +133,12 @@ def aggregate_etl_by_quarter(etl: pd.DataFrame) -> pd.DataFrame:
 
 
 def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
-    """Merge Overview with ETL quarterly data.
+    """Merge Overview with Data Prep quarterly data.
 
     Returns merged DataFrame with:
       Overview columns + ETL_Q1..ETL_Q4 + ETL_Total
 
-    New accounts in ETL (not in Overview) are appended as rows with
+    New accounts in Data Prep (not in Overview) are appended as rows with
     Overview columns filled with 0/empty. Original growth labels are preserved.
     """
     ov = load_overview()
@@ -174,9 +174,9 @@ def merge_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
 
 
 def updated_overview_with_etl(etl: pd.DataFrame) -> pd.DataFrame:
-    """Return Overview with ETL data added to the correct quarter column.
+    """Return Overview with Data Prep data added to the correct quarter column.
 
-    ETL orders are grouped by quarter (Jan-Mar → Q1, Apr-Jun → Q2, Jul-Sep → Q3, Oct-Dec → Q4).
+    Orders are grouped by quarter (Jan-Mar → Q1, Apr-Jun → Q2, Jul-Sep → Q3, Oct-Dec → Q4).
     Qty_2026_ = sum of all quarter columns (recomputed).
     Original growth labels are preserved.
     """
@@ -226,7 +226,7 @@ def compute_count(updated: pd.DataFrame) -> dict:
 
 
 def etl_date_label(etl: pd.DataFrame) -> str:
-    """Derive a date range label from ETL's Created at column.
+    """Derive a date range label from Data Prep's Created at column.
 
     Returns string like '0601-0618' from min/max dates.
     """
@@ -249,7 +249,7 @@ def add_count_column(wb, label: str, updated: pd.DataFrame) -> None:
 
 
 def generate_updated_pivot_xlsx(etl: pd.DataFrame, output_path: str) -> None:
-    """Generate a full pivot_table.xlsx with Overview sheet updated from ETL data.
+    """Generate a full pivot_table.xlsx with Overview sheet updated from Data Prep data.
 
     Other sheets are copied as-is. Overview sheet is rebuilt with:
       - Row 1: Updated by date
