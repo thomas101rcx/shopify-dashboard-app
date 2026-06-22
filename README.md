@@ -22,22 +22,26 @@ uv run streamlit run app.py --server.port 8501
 - Download result as CSV/XLSX
 - Click **"Send to Merge"** to pass result to Merge page
 
-### Overview
-- Upload your current `pivot_table.xlsx`
-- View all sheets: Overview, Lost Account, Count, 24Y 25N, Account Label Definitions, Duplicate Accounts
-- Formulas (growth %, SUM) computed and displayed as values
-- Color-coded badges for growth labels (New, Lost, Reactivated)
-- Label definitions shown in expander
-
 ### Merge
 - Upload your `pivot_table.xlsx` + Data Prep output (or use "Send to Merge" from Data Prep page)
+- New accounts in Data Prep not found in Overview trigger a warning
 - **Side-by-side Merge**: Overview columns + Data Prep quarterly columns (ETL_Q1..ETL_Q4) + ETL_Total
 - **Updated Overview**: Data Prep qty added to correct quarter column (by order date), Qty_2026_ recomputed, growth labels preserved
-- **Updated Count**: New counts computed from updated Overview, delta vs previous Count column shown
+- **Updated Count**: New counts derived from updated Overview, delta vs previous Count column shown
 - **Generate Updated Pivot XLSX**: downloads full workbook with:
   - Overview sheet rebuilt (merged data, SUM/COUNTIF formulas, preserved growth labels)
   - Count sheet updated (new snapshot column appended)
   - All other sheets copied as-is
+
+### Overview
+- Upload your current `pivot_table.xlsx`
+- View all sheets via tabs: **Overview**, **Lost Account**, **Count**, **24Y 25N**, **Labels**, **Duplicates**
+- Overview tab renders styled HTML table with:
+  - Color-coded badges for growth labels (🟡 New, 🔴 Lost, 🟢 Reactivated)
+  - Label type counts shown below table
+  - Growth % computed from qty columns
+- Label definitions shown in expander below Overview table
+- Other tabs display raw sheet data as DataFrame tables (Count tab reads headers dynamically from row 1)
 
 ## Merge Logic
 
@@ -76,7 +80,7 @@ Rules are applied sequentially. Supported types:
 | Type | Description |
 |------|-------------|
 | `keep_cols` / `drop_cols` | Column selection |
-| `filter` | Row filter (eq, neq, gt, gte, lt, lte, contains, in, not_in) |
+| `filter` | Row filter (eq, neq, gt, gte, lt, lte, contains, not_contains, in, not_in) |
 | `rename` | Rename columns |
 | `astype` | Cast dtype (int, float, bool, str, datetime) |
 | `drop_na` / `fill_na` | Null handling |
@@ -86,6 +90,7 @@ Rules are applied sequentially. Supported types:
 | `custom_filter` | Call custom Python function |
 | `fill_from_lookup` | Fill column from lookup grouped by source |
 | `fill_domain` | Fill from email domain; free providers use full email |
+| `compute` | Create new column from binary op (+, -, *, /) on two existing columns |
 
 See `rules_example.yaml` and `rules_shopify.yaml`.
 
@@ -100,3 +105,4 @@ See `rules_example.yaml` and `rules_shopify.yaml`.
 - `merge.py` — Merge Data Prep output into Overview, generate updated xlsx
 - `rules_example.yaml` — Example rules
 - `rules_shopify.yaml` — Shopify-specific rules
+- `USER_GUIDE.html` — Step-by-step user guide (open in browser)
