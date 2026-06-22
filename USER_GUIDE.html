@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopify Dashboard — User Guide</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #f8f9fc; line-height: 1.6; }
+  .container { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 2em; color: #16213e; border-bottom: 3px solid #0f3460; padding-bottom: 12px; margin-bottom: 8px; }
+  .subtitle { color: #555; font-size: 1.05em; margin-bottom: 32px; }
+  h2 { font-size: 1.4em; color: #0f3460; margin-top: 40px; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 2px solid #e0e0e0; }
+  h3 { font-size: 1.1em; color: #1a1a2e; margin-top: 24px; margin-bottom: 10px; }
+  p { margin-bottom: 12px; }
+  ol, ul { margin: 8px 0 16px 24px; }
+  li { margin-bottom: 6px; }
+  .step { background: #fff; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #0f3460; }
+  .step-num { display: inline-block; background: #0f3460; color: #fff; width: 28px; height: 28px; border-radius: 50%; text-align: center; line-height: 28px; font-weight: 700; font-size: 0.85em; margin-right: 10px; vertical-align: middle; }
+  .step-title { font-weight: 700; font-size: 1.05em; vertical-align: middle; }
+  .step-body { margin-top: 12px; }
+  .file-box { background: #eef2f7; border: 1px solid #d0d7e3; border-radius: 6px; padding: 10px 14px; margin: 8px 0; font-family: 'SF Mono', SFMono-Regular, Consolas, monospace; font-size: 0.88em; }
+  .file-box .label { font-weight: 700; color: #0f3460; display: block; margin-bottom: 4px; }
+  .file-box .format { color: #555; }
+  .file-box table { border-collapse: collapse; margin-top: 6px; width: 100%; }
+  .file-box th, .file-box td { border: 1px solid #c8d0dc; padding: 4px 10px; text-align: left; font-size: 0.92em; }
+  .file-box th { background: #dce3ed; }
+  .tip { background: #fff8e1; border-left: 4px solid #ffc107; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  .warn { background: #fce4ec; border-left: 4px solid #e91e63; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  .success { background: #e8f5e9; border-left: 4px solid #43a047; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  .page-icon { display: inline-block; width: 22px; text-align: center; margin-right: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: 600; }
+  .badge-blue { background: #e3f2fd; color: #1565c0; }
+  .badge-green { background: #e8f5e9; color: #2e7d32; }
+  .badge-orange { background: #fff3e0; color: #e65100; }
+  .badge-red { background: #fce4ec; color: #c62828; }
+  .flow { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 20px 0; flex-wrap: wrap; }
+  .flow-box { background: #fff; border: 2px solid #0f3460; border-radius: 8px; padding: 10px 18px; font-weight: 600; text-align: center; min-width: 120px; }
+  .flow-arrow { font-size: 1.4em; color: #0f3460; }
+  .toc { background: #fff; border-radius: 10px; padding: 20px 24px; margin-bottom: 32px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .toc h2 { margin-top: 0; border-bottom: none; }
+  .toc ol { margin-bottom: 0; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { color: #0f3460; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Shopify Dashboard — User Guide</h1>
+<p class="subtitle">Step-by-step instructions for transforming Shopify sales data and updating your pivot table dashboard.</p>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#overview">Overview &amp; Workflow</a></li>
+    <li><a href="#files">Files You Need</a></li>
+    <li><a href="#page1">Page 1: Data Prep</a></li>
+    <li><a href="#page2">Page 2: Merge</a></li>
+    <li><a href="#page3">Page 3: Overview</a></li>
+    <li><a href="#end-to-end">End-to-End Walkthrough</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+  </ol>
+</div>
+
+<!-- ────────────────────────────────────────────── -->
+<h2 id="overview">1. Overview &amp; Workflow</h2>
+
+<p>The app has three pages in the sidebar. You use them in this order:</p>
+
+<div class="flow">
+  <div class="flow-box"><span class="page-icon">📄</span><br>Data Prep</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box"><span class="page-icon">🔀</span><br>Merge</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box"><span class="page-icon">📊</span><br>Overview</div>
+</div>
+
+<table>
+  <tr><th>Page</th><th>What it does</th><th>Your action</th></tr>
+  <tr><td><b>Data Prep</b></td><td>Upload raw Shopify data + rules file → transform into clean output</td><td>Upload files, download result</td></tr>
+  <tr><td><b>Merge</b></td><td>Combine Data Prep output with your existing pivot_table.xlsx</td><td>Upload pivot table, download updated workbook</td></tr>
+  <tr><td><b>Overview</b></td><td>View all sheets of your pivot table with computed values</td><td>Upload pivot table, browse tabs</td></tr>
+</table>
+
+<!-- ────────────────────────────────────────────── -->
+<h2 id="files">2. Files You Need</h2>
+
+<h3>A. Shopify Data Export (required — Data Prep page)</h3>
+<p>Export your Shopify orders as a <b>CSV</b> or <b>XLSX</b> file. The file must contain these columns:</p>
+
+<div class="file-box">
+  <span class="label">Required columns in your Shopify export</span>
+  <table>
+    <tr><th>Column</th><th>Example</th><th>Why</th></tr>
+    <tr><td><code>Email</th><td>customer@gmail.com</td><td>Used to group orders by customer</td></tr>
+    <tr><td><code>Billing Company</th><td>Acme Corp</td><td>Account name (may be empty — rules will fill it)</td></tr>
+    <tr><td><code>Created at</th><td>2026-03-15</td><td>Order date — used to assign quarter (Q1–Q4)</td></tr>
+    <tr><td><code>Lineitem quantity</th><td>3</td><td>Number of items — this is what gets summed</td></tr>
+    <tr><td><code>Lineitem price</th><td>49.99</td><td>Used to filter out low-value items</td></tr>
+    <tr><td><code>Lineitem name</th><td>Deluxe Skimmer</td><td>Used to filter accessories/services</td></tr>
+    <tr><td><code>Lineitem sku</th><td>SKU-123</td><td>Kept for reference</td></tr>
+  </table>
+</div>
+
+<div class="tip">
+  <b>Tip:</b> Export all orders for the year (or the period you want to report on). The app will filter and aggregate them automatically.
+</div>
+
+<h3>B. Rules File (required — Data Prep page)</h3>
+<p>A YAML, JSON, or Python file that tells the app how to transform your data. The project includes a ready-made rules file:</p>
+
+<div class="file-box">
+  <span class="label">Included: <code>rules_shopify.yaml</code></span>
+  <span class="format">YAML rules file — ready to use, no editing needed</span>
+</div>
+
+<p>This rules file will:</p>
+<ol>
+  <li>Keep only the columns listed above</li>
+  <li>Remove accessory/service items (replacement, extended, bag, warranty, foam)</li>
+  <li>Remove items priced below $240 (with an exception for complimentary skimmers)</li>
+  <li>Fill in missing <code>Billing Company</code> from the email domain (e.g. <code>john@acmecorp.com</code> → <code>acmecorp.com</code>)</li>
+  <li>For free email domains (gmail, yahoo, etc.), use the full email as the company name</li>
+  <li>Cast columns to correct types (int, float, datetime)</li>
+  <li>Compute <code>Total amount = quantity × price</code></li>
+  <li>Summarize by <code>Billing Company + Created at</code> (sum quantities, sum amounts, list SKUs)</li>
+</ol>
+
+<h3>C. Your Pivot Table (required — Merge &amp; Overview pages)</h3>
+<p>Your existing <code>pivot_table.xlsx</code> workbook. This is the master dashboard that gets updated with new data each period.</p>
+
+<div class="file-box">
+  <span class="label">pivot_table.xlsx</span>
+  <span class="format">Your existing Excel workbook with sheets: Overview, Lost Account, Count, 24Y 25N, Account Label Definition, Duplicate Accounts</span>
+</div>
+
+<div class="warn">
+  <b>Important:</b> Always keep a backup of your <code>pivot_table.xlsx</code> before merging. The Merge page creates a new file — it does not modify your original.
+</div>
+
+<!-- ────────────────────────────────────────────── -->
+<h2 id="page1">3. Page 1: Data Prep</h2>
+<p><span class="badge badge-blue">Sidebar → Data Prep</span></p>
+
+<p>Transform raw Shopify export data into clean, aggregated output ready to merge into your pivot table.</p>
+
+<div class="step">
+  <span class="step-num">1</span>
+  <span class="step-title">Upload your rules file</span>
+  <div class="step-body">
+    <p>In the sidebar, click <b>"Rules file"</b> and select your rules file:</p>
+    <ul>
+      <li><code>rules_shopify.yaml</code> — included with the app, ready to use</li>
+      <li>Or your own custom rules file (<code>.yaml</code>, <code>.json</code>, or <code>.py</code>)</li>
+    </ul>
+    <p>You should see a green confirmation: <code>"Loaded 9 rule(s)"</code>.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>
+  <span class="step-title">Upload your data file(s)</span>
+  <div class="step-body">
+    <p>In the sidebar, click <b>"Data files"</b> and select one or more CSV/XLSX files.</p>
+    <p>If your file has multiple sheets, a radio button appears to pick which sheet to use.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>
+  <span class="step-title">Review the transformation</span>
+  <div class="step-body">
+    <p>For each file you uploaded, the app shows:</p>
+    <ul>
+      <li><b>Raw data preview</b> — first 50 rows of the original file</li>
+      <li><b>Transformed result</b> — data after all rules are applied</li>
+    </ul>
+    <p>Check that the <code>Billing Company</code> column is filled in and the <code>Created at</code> dates look correct.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">4</span>
+  <span class="step-title">Download or send to Merge</span>
+  <div class="step-body">
+    <p>Three buttons appear below each result:</p>
+    <ul>
+      <li><b>Download CSV</b> — save the result as a CSV file</li>
+      <li><b>Download XLSX</b> — save the result as an Excel file</li>
+      <li><b>Send to Merge</b> — pass the result directly to the Merge page (no download needed)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="success">
+  <b>Done!</b> Your data is now cleaned and aggregated by company + date. Move to the Merge page.
+</div>
+
+<!-- ────────────────────────────────────────────── -->
+<h2 id="page2">4. Page 2: Merge</h2>
+<p><span class="badge badge-orange">Sidebar → Merge</span></p>
+
+<p>Combine your Data Prep output with your existing pivot table to produce an updated workbook.</p>
+
+<div class="step">
+  <span class="step-num">1</span>
+  <span class="step-title">Upload your pivot_table.xlsx</span>
+  <div class="step-body">
+    <p>Click <b>"Pivot table file"</b> and select your existing <code>pivot_table.xlsx</code>.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>
+  <span class="step-title">Provide Data Prep output</span>
+  <div class="step-body">
+    <p>You have two options:</p>
+    <ul>
+      <li><b>Sent from Data Prep page</b> — if you clicked "Send to Merge" on the Data Prep page, the app uses that data automatically. No upload needed.</li>
+      <li><b>Upload a file</b> — click <b>"Data Prep output file"</b> and select the CSV or XLSX you downloaded from the Data Prep page.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>
+  <span class="step-title">Review the three merge tabs</span>
+  <div class="step-body">
+
+    <h4>Tab 1: Side-by-side Merge</h4>
+    <p>Shows your Overview data alongside the Data Prep quarterly columns:</p>
+    <ul>
+      <li>All original Overview columns (Account, Qty_2023, Growth, etc.)</li>
+      <li><code>ETL_Q1</code> through <code>ETL_Q4</code> — quantities from your Data Prep output by quarter</li>
+      <li><code>ETL_Total</code> — total for the period</li>
+    </ul>
+    <p>New accounts (in Data Prep but not in your original Overview) are marked as "new" in the row count.</p>
+
+    <h4>Tab 2: Updated Overview</h4>
+    <p>Shows your Overview with Data Prep quantities <b>added to the correct quarter column</b>:</p>
+    <ul>
+      <li>Jan–Mar orders → added to <code>Qty_2026_1</code></li>
+      <li>Apr–Jun orders → added to <code>Qty_2026_2</code></li>
+      <li>Jul–Sep orders → added to <code>Qty_2026_3</code></li>
+      <li>Oct–Dec orders → added to <code>Qty_2026_4</code></li>
+      <li><code>Qty_2026_</code> = sum of all four quarters (recomputed)</li>
+    </ul>
+    <p>Growth labels are preserved from your original file. The 25-26 growth is only recomputed if Data Prep changed a zero quantity to a positive one (new or reactivated account).</p>
+
+    <h4>Tab 3: Updated Count</h4>
+    <p>Shows the Count tab categories computed from the updated Overview:</p>
+    <table>
+      <tr><th>Category</th><th>Meaning</th></tr>
+      <tr><td>Total Account</td><td>Total number of accounts</td></tr>
+      <tr><td>Lost</td><td>Accounts with prior history but no 2026 purchases</td></tr>
+      <tr><td>New_26</td><td>Accounts with 2026 purchases but no prior history</td></tr>
+      <tr><td>No Purchase 2026 / Not Lost</td><td>No 2026 purchases, not labeled Lost</td></tr>
+      <tr><td>Already Purchased 2026</td><td>Has 2026 purchases</td></tr>
+    </table>
+    <p>If your Count sheet has previous columns, a <b>delta table</b> shows the change vs the last column.</p>
+
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">4</span>
+  <span class="step-title">Download the updated pivot table</span>
+  <div class="step-body">
+    <p>On the <b>Updated Overview</b> tab, click <b>"Generate Updated Pivot XLSX"</b> to create a full workbook. Then click the download button that appears.</p>
+    <p>The generated workbook includes:</p>
+    <ul>
+      <li><b>Overview sheet</b> — rebuilt with merged data, SUM/COUNTIF formulas, preserved growth labels</li>
+      <li><b>Count sheet</b> — new snapshot column appended (labeled with the date range, e.g. <code>0601-0618</code>)</li>
+      <li><b>All other sheets</b> — copied as-is from your original file</li>
+    </ul>
+  </div>
+</div>
+
+<div class="success">
+  <b>Done!</b> You now have an updated <code>Shopify_Pivot_Table_updated.xlsx</code>. This becomes your new working pivot_table.xlsx for next time.
+</div>
+
+<!-- ────────────────────────────────────────────── -->
+<h2 id="page3">5. Page 3: Overview</h2>
+<p><span class="badge badge-green">Sidebar → Overview</span></p>
+
+<p>Browse your pivot table data with all formulas computed and color-coded labels.</p>
+
+<div class="step">
+  <span class="step-num">1</span>
+  <span class="step-title">Upload your pivot_table.xlsx</span>
+  <div class="step-body">
+    <p>Click <b>"Pivot table file"</b> and select your <code>pivot_table.xlsx</code> (original or updated).</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>
+  <span class="step-title">Browse the six tabs</span>
+  <div class="step-body">
+
+    <table>
+      <tr><th>Tab</th><th>What you see</th></tr>
+      <tr><td><b>Overview</b></td><td>Main dashboard — accounts, quantities by year, growth %, color-coded badges for New/Lost/Reactivated labels</td></tr>
+      <tr><td><b>Lost Account</b></td><td>Accounts that previously purchased but have no recent activity</td></tr>
+      <tr><td><b>Count</b></td><td>Summary counts: Total, Lost, New_26, No Purchase, Already Purchased — new column appended each merge</td></tr>
+      <tr><td><b>24Y 25N</b></td><td>Accounts tracked year-over-year with Carecraft and email sent flags</td></tr>
+      <tr><td><b>Labels</b></td><td>Account label definitions and notes</td></tr>
+      <tr><td><b>Duplicates</b></td><td>Known duplicate accounts to watch for</td></tr>
+    </table>
+
+    <p>On the <b>Overview</b> tab, growth labels appear as color-coded badges:</p>
+    <ul>
+      <li><span class="badge badge-orange">🟡 New</span> — new accounts</li>
+      <li><span class="badge badge-red">🔴 Lost</span> — lost accounts</li>
+      <li><span class="badge badge-green">🟢 Reactivated</span> — reactivated accounts</li>
+    </ul>
+    <p>Formula cells (growth %, SUM) are computed and displayed as values — no need to open Excel.</p>
+
+  </div>
+</div>
+
+<!-- ────────────────────────────────────────────── -->
+<h2 id="end-to-end">6. End-to-End Walkthrough</h2>
+
+<p>Here's the complete flow from raw Shopify data to updated dashboard:</p>
+
+<div class="step">
+  <span class="step-num">1</span>
+  <span class="step-title">Export data from Shopify</span>
+  <div class="step-body">
+    <p>In Shopify Admin → Orders → Export. Choose CSV format. Export all orders for the reporting period.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>
+  <span class="step-title">Go to Data Prep page</span>
+  <div class="step-body">
+    <p>Sidebar → <b>Data Prep</b>.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>
+  <span class="step-title">Upload <code>rules_shopify.yaml</code> and your Shopify CSV</span>
+  <div class="step-body">
+    <p>Rules file in the first uploader, data file in the second. Review the transformed output.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">4</span>
+  <span class="step-title">Click "Send to Merge"</span>
+  <div class="step-body">
+    <p>This passes the result directly to the Merge page. No download needed.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">5</span>
+  <span class="step-title">Go to Merge page</span>
+  <div class="step-body">
+    <p>Sidebar → <b>Merge</b>. Upload your current <code>pivot_table.xlsx</code>. The Data Prep result is already loaded.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">6</span>
+  <span class="step-title">Review the three merge tabs</span>
+  <div class="step-body">
+    <p>Check Side-by-side Merge, Updated Overview, and Updated Count for accuracy.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">7</span>
+  <span class="step-title">Click "Generate Updated Pivot XLSX" → Download</span>
+  <div class="step-body">
+    <p>On the Updated Overview tab. Save the downloaded file. This is your new pivot table.</p>
+  </div>
+</div>
+
+<div class="step">
+  <span class="step-num">8</span>
+  <span class="step-title">Go to Overview page to verify</span>
+  <div class="step-body">
+    <p>Sidebar → <b>Overview</b>. Upload the newly generated file. Browse all tabs to confirm everything looks correct.</p>
+  </div>
+</div>
+
+<div class="success">
+  <b>Complete!</b> Your pivot table is updated with the latest Shopify data. Use this file as your starting point next period.
+</div>
+
+<!-- ────────────────────────────────────────────── -->
+<h2 id="troubleshooting">7. Troubleshooting</h2>
+
+<table>
+  <tr><th>Problem</th><th>Solution</th></tr>
+  <tr><td>"Missing column: Billing Company"</td><td>Your export may not have this column. The rules file will fill it from email — just make sure <code>Email</code> is present.</td></tr>
+  <tr><td>"Missing column: Lineitem quantity"</td><td>Check your Shopify export includes line-item level data, not just order-level.</td></tr>
+  <tr><td>"Rules error" on upload</td><td>Check your YAML syntax. Use <code>rules_shopify.yaml</code> as a reference.</td></tr>
+  <tr><td>File won't upload (XLSX)</td><td>The app tries multiple Excel engines. If it fails, save your file as CSV and upload that instead.</td></tr>
+  <tr><td>New accounts showing in warning</td><td>This is expected — accounts in your Data Prep output that don't exist in your pivot table yet. They'll be added to the updated file.</td></tr>
+  <tr><td>Growth labels look wrong</td><td>Labels are preserved from your original file. Only 25-26 growth is recomputed when a zero becomes positive. SOS labels are never auto-assigned.</td></tr>
+  <tr><td>Count tab shows wrong numbers</td><td>Count categories are computed from the updated Overview. Check that the Overview data looks correct first.</td></tr>
+</table>
+
+<div class="tip">
+  <b>Best practice:</b> Run the Data Prep page first, review the output, then move to Merge. Always keep a backup of your pivot_table.xlsx before generating a new one.
+</div>
+
+<hr style="margin-top: 48px; border: none; border-top: 1px solid #ddd;">
+<p style="color: #888; font-size: 0.85em; text-align: center; margin-top: 16px;">
+  Shopify Dashboard App — User Guide
+</p>
+
+</div>
+</body>
+</html>
